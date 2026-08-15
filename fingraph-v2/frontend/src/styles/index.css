@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-ink text-white font-display antialiased;
+}
+
+::selection {
+  @apply bg-teal/30 text-white;
+}
+
+.ledger-bg {
+  @apply bg-ledger-grid bg-grid-24;
+}
+
+.mono-num {
+  @apply font-mono tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
