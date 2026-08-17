@@ -118,3 +118,36 @@ def test_detect_large_transaction_rule(mock_neo4j):
     assert alert["type"] == "LARGE_TRANSACTION_EXCEEDED"
     assert alert["severity"] == "CRITICAL"
     assert alert["account_ids"] == ["BIG_SENDER", "BIG_RECEIVER"]
+
+
+def test_auth_signup_and_verify_flow():
+    """Verify signup sends OTP safely without dev_otp exposure and allows OTP verification."""
+    from app.auth.routes import IN_MEMORY_OTPS
+    
+    test_email = "test.analyst@fingraph.io"
+    signup_resp = client.post(
+        "/auth/signup",
+        json={"name": "Test Analyst", "email": test_email, "password": "password123"},
+    )
+    assert signup_resp.status_code == 200
+    payload = signup_resp.json()
+    assert payload["success"] is True
+    assert "dev_otp" not in payload  # Ensure plain OTP is NEVER returned in response
+    assert "otp" not in payload
+
+    # Retrieve OTP record from test memory store to test verification logic
+    otp_record = IN_MEMORY_OTPS.get(test_email)
+    assert otp_record is not None
+    assert "otp_hash" in otp_record
+    assert "otp" not in otp_record or otp_record["otp_hash"] is not None
+
+    # Test invalid OTP code
+    verify_bad = client.post("/auth/verify-otp", json={"email": test_email, "otp": "000000"})
+    assert verify_bad.status_code == 400
+    assert "Invalid verification code" in verify_bad.json()["detail"]
+
+    # Test resend rate limit cooldown
+    resend_cooldown = client.post("/auth/resend-otp", json={"email": test_email})
+    assert resend_cooldown.status_code == 429
+    assert "Please wait" in resend_cooldown.json()["detail"]
+

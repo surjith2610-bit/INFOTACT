@@ -1,4 +1,5 @@
-import random
+import hashlib
+import secrets
 import string
 import logging
 from datetime import datetime, timedelta, timezone
@@ -47,8 +48,15 @@ def decode_access_token(token: str) -> dict | None:
 
 
 # ---------- OTP ----------
-def generate_otp(length: int = 6) -> str:
-    return "".join(random.choices(string.digits, k=length))
+def generate_otp() -> str:
+    """Generates a cryptographically secure 6-digit numeric OTP string."""
+    return str(secrets.randbelow(900000) + 100000)
+
+
+def hash_otp(otp: str) -> str:
+    """Computes a SHA-256 hash of the plain-text OTP string for secure DB storage."""
+    return hashlib.sha256(otp.encode("utf-8")).hexdigest()
+
 
 
 # ---------- reCAPTCHA (sign-in / sign-up bot check) ----------
@@ -79,13 +87,14 @@ async def verify_google_id_token(id_token: str) -> dict | None:
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(
-                "https://oauth2.googleapis.com/tokeninfo", params={"id_token": id_token}, timeout=5
+                "https://oauth2.googleapis.com/tokeninfo", params={"id_token": id_token}, timeout=3.0
             )
             if resp.status_code != 200:
                 return None
             data = resp.json()
-            if data.get("aud") != settings.GOOGLE_CLIENT_ID:
+            if settings.GOOGLE_CLIENT_ID and data.get("aud") != settings.GOOGLE_CLIENT_ID:
                 return None
             return data
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[GOOGLE AUTH] Token verification check exception: {e}")
             return None

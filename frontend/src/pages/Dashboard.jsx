@@ -147,7 +147,7 @@ export default function Dashboard() {
               onClick={handleLogout}
               className="text-ledger hover:text-white border border-grid px-3 py-1 rounded-md transition-colors"
             >
-              Sign out
+              Sign Out
             </button>
           </div>
         </div>

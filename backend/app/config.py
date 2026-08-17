@@ -40,6 +40,24 @@ class Settings(BaseSettings):
     # --- Frontend origin (CORS) ---
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 
+    # --- Auth, OTP & reCAPTCHA ---
+    RECAPTCHA_SECRET_KEY: str = "recaptcha-secret-goes-here"
+    GOOGLE_CLIENT_ID: str = ""
+    OTP_EXPIRE_MINUTES: int = 10
+    OTP_MAX_ATTEMPTS: int = 5
+    OTP_RESEND_COOLDOWN_SECONDS: int = 60
+
+    # --- SMTP (Email Alerts & OTP) ---
+    SMTP_USER: str = ""
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "noreply@fingraph.io"
+
+    # --- Mongo (Optional auth user store) ---
+    MONGO_URI: str = "mongodb://localhost:27017"
+    MONGO_DB: str = "fingraph"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

@@ -15,9 +15,33 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Helper to extract human-readable error messages from Axios / FastAPI responses
+export const getErrorMessage = (err, defaultMsg = "An unexpected error occurred. Please try again.") => {
+  if (!err) return defaultMsg;
+  if (!err.response) {
+    if (err.code === "ERR_NETWORK" || err.message === "Network Error") {
+      return "Authentication server is unavailable. Please try again.";
+    }
+    return err.message || defaultMsg;
+  }
+
+  const detail = err.response.data?.detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item.msg || item.message || JSON.stringify(item)).join(". ");
+  }
+  if (detail && typeof detail === "object") {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return err.response.data?.message || defaultMsg;
+};
+
 // --- Auth APIs ---
 export const signup = (data) => api.post("/auth/signup", data);
 export const verifyOtp = (data) => api.post("/auth/verify-otp", data);
+export const resendOtp = (data) => api.post("/auth/resend-otp", data);
 export const login = (data) => api.post("/auth/login", data);
 export const googleLogin = (id_token) => api.post("/auth/google-login", { id_token });
 

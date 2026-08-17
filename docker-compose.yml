@@ -65,6 +65,14 @@ services:
       - NEO4J_DATABASE=neo4j
       - SEED_DATA=true
       - FRONTEND_ORIGIN=http://localhost:5173
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@fingraph.io}
+      - OTP_EXPIRE_MINUTES=${OTP_EXPIRE_MINUTES:-10}
+      - OTP_MAX_ATTEMPTS=${OTP_MAX_ATTEMPTS:-5}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
     depends_on:
       kafka:
         condition: service_healthy
@@ -98,6 +106,7 @@ services:
       - "5173:5173"
     environment:
       - VITE_API_URL=http://localhost:5000
+      - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID:-}
     depends_on:
       - backend
 

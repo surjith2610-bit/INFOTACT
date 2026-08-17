@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ReCAPTCHA from "react-google-recaptcha";
 import GraphBackdrop from "../components/GraphBackdrop.jsx";
-import { login, googleLogin } from "../api/client.js";
+import GoogleAuthButton from "../components/GoogleAuthButton.jsx";
+import { login, getErrorMessage } from "../api/client.js";
 
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "";
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -27,21 +27,10 @@ export default function Login() {
       localStorage.setItem("fingraph_token", data.access_token);
       navigate("/dashboard");
     } catch (err) {
-      setError(err.response?.data?.detail || "Login failed. Check your credentials.");
+      setError(getErrorMessage(err, "Invalid email or password."));
     } finally {
       setLoading(false);
     }
-  }
-
-  // Renders Google's real button when a client ID is configured; otherwise
-  // shows a disabled placeholder so the UI still communicates the feature.
-  function handleGoogleCredential(response) {
-    googleLogin(response.credential)
-      .then(({ data }) => {
-        localStorage.setItem("fingraph_token", data.access_token);
-        navigate("/dashboard");
-      })
-      .catch(() => setError("Google sign-in failed."));
   }
 
   return (
@@ -57,81 +46,70 @@ export default function Login() {
               </span>
             </div>
             <h1 className="text-3xl font-bold tracking-tight">FinGraph</h1>
-            <p className="text-ledger text-sm mt-1">Sign in to trace the flow.</p>
+            <p className="text-ledger text-sm mt-1">Welcome back. Sign in to trace the flow.</p>
           </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="bg-panel/90 backdrop-blur border border-grid rounded-xl p-6 space-y-4"
-          >
+          <div className="bg-panel/90 backdrop-blur border border-grid rounded-xl p-6 space-y-5 shadow-2xl">
             {error && (
               <div className="text-flare text-sm font-mono bg-flare/10 border border-flare/30 rounded-md px-3 py-2">
                 {error}
               </div>
             )}
 
-            <div>
-              <label className="text-xs font-mono text-ledger uppercase tracking-wide">Email</label>
-              <input
-                type="email"
-                required
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="mt-1 w-full bg-ink border border-grid rounded-md px-3 py-2 outline-none focus:border-teal focus:ring-1 focus:ring-teal"
-                placeholder="analyst@bank.com"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-mono text-ledger uppercase tracking-wide">Password</label>
-              <input
-                type="password"
-                required
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="mt-1 w-full bg-ink border border-grid rounded-md px-3 py-2 outline-none focus:border-teal focus:ring-1 focus:ring-teal"
-                placeholder="••••••••"
-              />
-            </div>
-
-            {RECAPTCHA_SITE_KEY ? (
-              <ReCAPTCHA sitekey={RECAPTCHA_SITE_KEY} onChange={setCaptchaToken} theme="dark" />
-            ) : (
-              <div className="text-xs font-mono text-ledger border border-dashed border-grid rounded-md px-3 py-2">
-                Captcha widget renders here once VITE_RECAPTCHA_SITE_KEY is set in .env
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-teal text-ink font-semibold rounded-md py-2.5 hover:bg-teal/90 transition-colors disabled:opacity-50"
-            >
-              {loading ? "Verifying…" : "Sign in"}
-            </button>
+            {/* Google Authentication */}
+            <GoogleAuthButton
+              label="Continue with Google"
+              onSuccess={() => navigate("/dashboard")}
+              onError={(err) => setError(err)}
+            />
 
             <div className="flex items-center gap-3 py-1">
               <div className="h-px flex-1 bg-grid" />
-              <span className="text-ledger text-xs font-mono">or</span>
+              <span className="text-ledger text-xs font-mono uppercase tracking-widest">or</span>
               <div className="h-px flex-1 bg-grid" />
             </div>
 
-            {GOOGLE_CLIENT_ID ? (
-              <div id="google-signin-button" className="flex justify-center" />
-            ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-mono text-ledger uppercase tracking-wide">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="mt-1 w-full bg-ink border border-grid rounded-md px-3 py-2 outline-none focus:border-teal focus:ring-1 focus:ring-teal text-white"
+                  placeholder="analyst@bank.com"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-mono text-ledger uppercase tracking-wide">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="mt-1 w-full bg-ink border border-grid rounded-md px-3 py-2 outline-none focus:border-teal focus:ring-1 focus:ring-teal text-white"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              {RECAPTCHA_SITE_KEY ? (
+                <ReCAPTCHA sitekey={RECAPTCHA_SITE_KEY} onChange={setCaptchaToken} theme="dark" />
+              ) : null}
+
               <button
-                type="button"
-                disabled
-                title="Set VITE_GOOGLE_CLIENT_ID to enable"
-                className="w-full border border-grid rounded-md py-2.5 text-sm text-ledger cursor-not-allowed"
+                type="submit"
+                disabled={loading}
+                className="w-full bg-teal text-ink font-semibold rounded-md py-2.5 hover:bg-teal/90 transition-colors disabled:opacity-50"
               >
-                Continue with Google
+                {loading ? "Verifying…" : "Sign In"}
               </button>
-            )}
-          </form>
+            </form>
+          </div>
 
           <p className="text-center text-sm text-ledger mt-5">
-            No account?{" "}
+            Don&apos;t have an account?{" "}
             <Link to="/signup" className="text-teal hover:underline">
               Create one
             </Link>
@@ -141,3 +119,4 @@ export default function Login() {
     </div>
   );
 }
+
