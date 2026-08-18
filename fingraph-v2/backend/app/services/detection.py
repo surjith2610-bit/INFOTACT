@@ -110,7 +110,7 @@ def detect_smurfing(
     where transaction amounts cluster below reporting thresholds.
     """
     cypher = """
-    MATCH (receiver:Account)<-[t:TRANSFERRED_TO|TRANSFER]-(sender:Account)
+    MATCH (receiver:Account)<-[t:TRANSFER]-(sender:Account)
     WITH receiver,
          collect(DISTINCT sender.accountId) AS senders,
          collect(t.txId) AS txIds,
@@ -171,7 +171,7 @@ def detect_circular_transfers(
     Finds cycles in money flow, e.g. A -> B -> C -> A or A -> B -> A.
     """
     cypher = f"""
-    MATCH path = (a:Account)-[:TRANSFERRED_TO|TRANSFER*2..{max_depth}]->(a:Account)
+    MATCH path = (a:Account)-[:TRANSFER*2..{max_depth}]->(a:Account)
     WITH nodes(path) AS cycleNodes, relationships(path) AS cycleRels
     WITH [n IN cycleNodes | n.accountId] AS rawAccs,
          [r IN cycleRels | r.txId] AS txIds,
@@ -225,7 +225,7 @@ def detect_high_frequency(
     Detects accounts executing abnormally high transaction volumes.
     """
     cypher = """
-    MATCH (a:Account)-[t:TRANSFERRED_TO|TRANSFER]-(b:Account)
+    MATCH (a:Account)-[t:TRANSFER]-(b:Account)
     WITH a, count(t) AS txCount, collect(DISTINCT b.accountId) AS peerAccounts, collect(t.txId) AS txIds
     WHERE txCount >= $countThreshold
     RETURN a.accountId AS accountId, txCount, peerAccounts, txIds
@@ -265,7 +265,7 @@ def detect_large_transaction(
     Flags individual transfers that exceed configured threshold value.
     """
     cypher = """
-    MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
+    MATCH (s:Account)-[t:TRANSFER]->(r:Account)
     WHERE t.amount >= $threshold AND t.amount > 0
     RETURN t.txId AS txId, s.accountId AS sender, r.accountId AS receiver, t.amount AS amount, t.timestamp AS timestamp
     ORDER BY t.amount DESC
@@ -327,7 +327,7 @@ def run_all_detections() -> dict:
 def get_graph_sample(limit: int = 300) -> dict:
     """Returns nodes and edges formatted for the React force-directed graph component."""
     cypher = """
-    MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
+    MATCH (s:Account)-[t:TRANSFER]->(r:Account)
     RETURN s.accountId AS source, r.accountId AS target,
            t.amount AS amount, t.txId AS txId,
            coalesce(s.riskScore, 0.0) AS sourceRisk,
@@ -336,25 +336,18 @@ def get_graph_sample(limit: int = 300) -> dict:
     """
     rows = neo4j_conn.run(cypher, {"limit": limit})
     nodes = {}
-    seen_tx_ids = set()
     links = []
     for row in rows:
         source_id = str(row["source"])
         target_id = str(row["target"])
-        tx_id = str(row.get("txId", ""))
-
         nodes[source_id] = {"id": source_id, "risk": float(row["sourceRisk"])}
         nodes[target_id] = {"id": target_id, "risk": float(row["targetRisk"])}
-
-        link_key = (source_id, target_id, tx_id) if tx_id else (source_id, target_id)
-        if link_key not in seen_tx_ids:
-            seen_tx_ids.add(link_key)
-            links.append(
-                {
-                    "source": source_id,
-                    "target": target_id,
-                    "amount": float(row["amount"]),
-                    "txId": tx_id,
-                }
-            )
+        links.append(
+            {
+                "source": source_id,
+                "target": target_id,
+                "amount": float(row["amount"]),
+                "txId": str(row.get("txId", "")),
+            }
+        )
     return {"nodes": list(nodes.values()), "links": links}

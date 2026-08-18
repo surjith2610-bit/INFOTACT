@@ -25,28 +25,28 @@ class Neo4jConnection:
         self.password = password
         self.database = database
         self._driver = None
-        self._last_failed_time = 0
 
     def get_driver(self):
-        if self._driver is not None:
-            return self._driver
-
-        # Cooldown check: if failed recently, don't block API requests with 3s retries
-        if time.time() - self._last_failed_time < 10.0:
-            return None
-
-        try:
-            driver = GraphDatabase.driver(
-                self.uri, auth=(self.user, self.password), connection_timeout=1.0
-            )
-            driver.verify_connectivity()
-            self._driver = driver
-            logger.info(f"[NEO4J] Connected successfully to {self.uri}")
-            return self._driver
-        except Exception as e:
-            self._last_failed_time = time.time()
-            logger.warning(f"[NEO4J] Connection check failed: {e}. Operating in API fallback mode.")
-            return None
+        if self._driver is None:
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    self._driver = GraphDatabase.driver(
+                        self.uri, auth=(self.user, self.password)
+                    )
+                    self._driver.verify_connectivity()
+                    logger.info(f"[NEO4J] Connected successfully to {self.uri}")
+                    break
+                except Exception as e:
+                    logger.warning(
+                        f"[NEO4J] Connection attempt {attempt}/{max_retries} failed: {e}. Graph queries will retry when Neo4j is ready."
+                    )
+                    if attempt == max_retries:
+                        logger.warning("[NEO4J] Neo4j is offline. Backend starting in API fallback mode.")
+                        self._driver = None
+                        break
+                    time.sleep(1)
+        return self._driver
 
     def close(self):
         if self._driver:
@@ -72,11 +72,10 @@ neo4j_conn = Neo4jConnection(
 
 
 def init_neo4j_constraints():
-    """Run once at startup to keep Account, Person, Bank, and FraudAlert IDs unique."""
+    """Run once at startup to keep Account, Transaction, and FraudAlert IDs unique."""
     constraints = [
         "CREATE CONSTRAINT account_id IF NOT EXISTS FOR (a:Account) REQUIRE a.accountId IS UNIQUE",
-        "CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.personId IS UNIQUE",
-        "CREATE CONSTRAINT bank_id IF NOT EXISTS FOR (b:Bank) REQUIRE b.bankId IS UNIQUE",
+        "CREATE CONSTRAINT transaction_id IF NOT EXISTS FOR (t:Transaction) REQUIRE t.txId IS UNIQUE",
         "CREATE CONSTRAINT alert_id IF NOT EXISTS FOR (f:FraudAlert) REQUIRE f.id IS UNIQUE",
     ]
     for constraint in constraints:
