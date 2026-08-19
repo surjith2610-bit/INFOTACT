@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # --- Auth, OTP & reCAPTCHA ---
     RECAPTCHA_SECRET_KEY: str = "recaptcha-secret-goes-here"
     GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:5000/auth/google/callback"
     OTP_EXPIRE_MINUTES: int = 10
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RESEND_COOLDOWN_SECONDS: int = 60

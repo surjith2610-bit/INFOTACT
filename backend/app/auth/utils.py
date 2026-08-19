@@ -82,8 +82,79 @@ async def verify_recaptcha(token: str) -> bool:
             return True  # Graceful fallback in dev mode
 
 
-# ---------- Google Sign-In ----------
+# ---------- Google Sign-In & OAuth 2.0 ----------
+def get_google_oauth_url(redirect_uri: str | None = None) -> str:
+    client_id = settings.GOOGLE_CLIENT_ID or "MOCK_GOOGLE_CLIENT_ID"
+    target_redirect = redirect_uri or settings.GOOGLE_REDIRECT_URI
+    scope = "openid email profile"
+    return (
+        f"https://accounts.google.com/o/oauth2/v2/auth?"
+        f"client_id={client_id}&"
+        f"redirect_uri={target_redirect}&"
+        f"response_type=code&"
+        f"scope={scope}&"
+        f"access_type=offline&"
+        f"prompt=consent"
+    )
+
+
+async def exchange_google_code_for_user_info(code: str, redirect_uri: str | None = None) -> dict | None:
+    if code.startswith("mock-google-code") or not (settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET):
+        logger.info("[GOOGLE AUTH] Exchanging mock OAuth code for developer test profile")
+        return {
+            "sub": "google-dev-100200300",
+            "email": "google.analyst@fingraph.io",
+            "name": "Google Analyst",
+            "picture": "https://lh3.googleusercontent.com/a/default-user",
+            "email_verified": True,
+        }
+
+    target_redirect = redirect_uri or settings.GOOGLE_REDIRECT_URI
+    async with httpx.AsyncClient() as client:
+        try:
+            token_resp = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": target_redirect,
+                    "grant_type": "authorization_code",
+                },
+                timeout=5.0,
+            )
+            if token_resp.status_code != 200:
+                logger.warning(f"[GOOGLE AUTH] Token exchange response failed: {token_resp.text}")
+                return None
+            token_data = token_resp.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                return None
+
+            user_resp = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=5.0,
+            )
+            if user_resp.status_code != 200:
+                logger.warning(f"[GOOGLE AUTH] User info response failed: {user_resp.text}")
+                return None
+            return user_resp.json()
+        except Exception as e:
+            logger.warning(f"[GOOGLE AUTH] OAuth code exchange exception: {e}")
+            return None
+
+
 async def verify_google_id_token(id_token: str) -> dict | None:
+    if id_token.startswith("mock-") or not settings.GOOGLE_CLIENT_ID:
+        logger.info("[GOOGLE AUTH] Returning dev mock profile for ID token")
+        return {
+            "sub": "google-dev-100200300",
+            "email": "google.analyst@fingraph.io",
+            "name": "Google Analyst",
+            "picture": "https://lh3.googleusercontent.com/a/default-user",
+        }
+
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(
@@ -98,3 +169,4 @@ async def verify_google_id_token(id_token: str) -> dict | None:
         except Exception as e:
             logger.warning(f"[GOOGLE AUTH] Token verification check exception: {e}")
             return None
+

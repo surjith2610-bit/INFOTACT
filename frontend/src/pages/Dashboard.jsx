@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import NetworkGraph from "../components/NetworkGraph.jsx";
+import ProfessionalProfile from "../components/ProfessionalProfile.jsx";
 import {
   fetchStats,
   fetchTransactions,
@@ -13,6 +14,7 @@ import {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("analytics"); // "analytics" | "profile"
   const [stats, setStats] = useState(null);
   const [graphData, setGraphData] = useState(null);
   const [alerts, setAlerts] = useState([]);
@@ -118,13 +120,39 @@ export default function Dashboard() {
     <div className="min-h-screen ledger-bg text-white font-sans">
       {/* Top Header */}
       <header className="border-b border-grid bg-panel/80 backdrop-blur sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-teal shadow-[0_0_12px_2px_rgba(45,217,196,0.6)]" />
-            <div>
-              <span className="font-bold tracking-tight text-lg">FinGraph</span>
-              <span className="text-ledger text-xs font-mono ml-2 uppercase tracking-widest">Real-Time Syndicate Desk</span>
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-teal shadow-[0_0_12px_2px_rgba(45,217,196,0.6)]" />
+              <div>
+                <span className="font-bold tracking-tight text-lg">FinGraph</span>
+                <span className="text-ledger text-xs font-mono ml-2 uppercase tracking-widest hidden sm:inline">Syndicate Analytics</span>
+              </div>
             </div>
+
+            {/* Navigation Tabs */}
+            <nav className="flex items-center bg-ink/70 border border-grid rounded-lg p-1 text-xs font-mono">
+              <button
+                onClick={() => setActiveTab("analytics")}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  activeTab === "analytics"
+                    ? "bg-teal text-ink font-semibold shadow-md"
+                    : "text-ledger hover:text-white"
+                }`}
+              >
+                Graph Analytics
+              </button>
+              <button
+                onClick={() => setActiveTab("profile")}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  activeTab === "profile"
+                    ? "bg-teal text-ink font-semibold shadow-md"
+                    : "text-ledger hover:text-white"
+                }`}
+              >
+                Professional Profile
+              </button>
+            </nav>
           </div>
 
           <div className="flex items-center gap-4 text-xs font-mono">
@@ -133,7 +161,7 @@ export default function Dashboard() {
               <span className="text-ledger">{stats?.status === "ok" ? "System Online" : "Connecting..."}</span>
             </div>
 
-            <label className="flex items-center gap-2 cursor-pointer text-ledger hover:text-white">
+            <label className="hidden md:flex items-center gap-2 cursor-pointer text-ledger hover:text-white">
               <input
                 type="checkbox"
                 checked={autoRefresh}
@@ -145,7 +173,7 @@ export default function Dashboard() {
 
             <button
               onClick={handleLogout}
-              className="text-ledger hover:text-white border border-grid px-3 py-1 rounded-md transition-colors"
+              className="text-ledger hover:text-white border border-grid px-3 py-1.5 rounded-md transition-colors"
             >
               Sign Out
             </button>
@@ -161,6 +189,12 @@ export default function Dashboard() {
             <button onClick={() => setStatusMessage("")} className="text-ledger hover:text-white">✕</button>
           </div>
         )}
+
+        {/* Tab Content Switching */}
+        {activeTab === "profile" ? (
+          <ProfessionalProfile />
+        ) : (
+          <>
 
         {/* Executive Summary Metrics Grid */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -342,6 +376,8 @@ export default function Dashboard() {
             </table>
           </div>
         </section>
+        </>
+        )}
       </main>
 
       {/* Alert Detail Modal */}

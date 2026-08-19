@@ -20,7 +20,7 @@ export const getErrorMessage = (err, defaultMsg = "An unexpected error occurred.
   if (!err) return defaultMsg;
   if (!err.response) {
     if (err.code === "ERR_NETWORK" || err.message === "Network Error") {
-      return "Authentication server is unavailable. Please try again.";
+      return "Unable to connect to authentication server. Please verify the backend is running at " + API_BASE_URL;
     }
     return err.message || defaultMsg;
   }
@@ -44,6 +44,8 @@ export const verifyOtp = (data) => api.post("/auth/verify-otp", data);
 export const resendOtp = (data) => api.post("/auth/resend-otp", data);
 export const login = (data) => api.post("/auth/login", data);
 export const googleLogin = (id_token) => api.post("/auth/google-login", { id_token });
+export const fetchUserProfile = () => api.get("/auth/me");
+export const updateSocialLinks = (data) => api.post("/auth/social-links", data);
 
 // --- Core FinGraph APIs ---
 export const fetchStats = () => api.get("/api/stats");
