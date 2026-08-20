@@ -6,7 +6,6 @@ from app.config import settings
 from app.database import init_neo4j_constraints
 from app.services.seed import seed_database
 from app.routes.api import router as api_router
-from app.auth.routes import router as auth_router
 from app.routes.data import router as legacy_data_router
 from app.routes.graph import router as legacy_graph_router
 
@@ -31,15 +30,17 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://localhost:5001",
+        "http://127.0.0.1:5001",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount primary API router & auth/legacy routers
+# Mount primary API router & legacy routers
 app.include_router(api_router)
-app.include_router(auth_router)
 app.include_router(legacy_data_router)
 app.include_router(legacy_graph_router)
 

@@ -5,18 +5,6 @@ from app.config import settings
 
 logger = logging.getLogger("database")
 
-# --- Mongo (optional store for auth users / OTP codes) ---
-try:
-    from motor.motor_asyncio import AsyncIOMotorClient
-    mongo_client = AsyncIOMotorClient(settings.MONGO_URI, serverSelectionTimeoutMS=2000)
-    mongo_db = mongo_client[settings.MONGO_DB]
-    users_collection = mongo_db["users"]
-    otp_collection = mongo_db["otp_codes"]
-except Exception as mongo_err:
-    logger.info(f"[MONGO] Optional Mongo client init warning: {mongo_err}")
-    users_collection = None
-    otp_collection = None
-
 
 class Neo4jConnection:
     def __init__(self, uri: str, user: str, password: str, database: str = "neo4j"):
@@ -58,9 +46,13 @@ class Neo4jConnection:
         if driver is None:
             logger.warning(f"[NEO4J] Skipping Cypher query as Neo4j is offline: {query[:40]}...")
             return []
-        with driver.session(database=self.database) as session:
-            result = session.run(query, parameters or {})
-            return [record.data() for record in result]
+        try:
+            with driver.session(database=self.database) as session:
+                result = session.run(query, parameters or {})
+                return [record.data() for record in result]
+        except Exception as e:
+            logger.warning(f"[NEO4J] Execution exception on query: {e}")
+            return []
 
 
 neo4j_conn = Neo4jConnection(

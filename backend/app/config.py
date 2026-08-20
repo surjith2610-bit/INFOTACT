@@ -9,10 +9,7 @@ class Settings(BaseSettings):
     # --- App ---
     APP_NAME: str = "FinGraph"
     ENV: str = "development"
-    PORT: int = 5000
-    JWT_SECRET: str = "fingraph-super-secret-jwt-key-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
+    PORT: int = 5001
 
     # --- Neo4j (the fraud graph) ---
     NEO4J_URI: str = "bolt://localhost:7687"
@@ -40,25 +37,12 @@ class Settings(BaseSettings):
     # --- Frontend origin (CORS) ---
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 
-    # --- Auth, OTP & reCAPTCHA ---
-    RECAPTCHA_SECRET_KEY: str = "recaptcha-secret-goes-here"
-    GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "http://localhost:5000/auth/google/callback"
-    OTP_EXPIRE_MINUTES: int = 10
-    OTP_MAX_ATTEMPTS: int = 5
-    OTP_RESEND_COOLDOWN_SECONDS: int = 60
-
-    # --- SMTP (Email Alerts & OTP) ---
+    # --- SMTP (Email Fraud Alerts) ---
     SMTP_USER: str = ""
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = "noreply@fingraph.io"
-
-    # --- Mongo (Optional auth user store) ---
-    MONGO_URI: str = "mongodb://localhost:27017"
-    MONGO_DB: str = "fingraph"
 
     class Config:
         env_file = ".env"

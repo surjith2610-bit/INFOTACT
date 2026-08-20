@@ -130,6 +130,9 @@ def detect_smurfing(
     ORDER BY senderCount DESC
     """
     rows = neo4j_conn.run(cypher, {"limit": limit})
+    if not rows:
+        return _detect_smurfing_memory()
+
     alerts = []
     for row in rows:
         receiver_id = row["receiverId"]
@@ -180,12 +183,14 @@ def detect_circular_transfers(
     LIMIT 20
     """
     rows = neo4j_conn.run(cypher)
+    if not rows:
+        return _detect_circular_memory()
+
     alerts = []
     seen_cycles = set()
 
     for row in rows:
         raw_accs = row["rawAccs"]
-        # Remove trailing duplicate start node for unique representation
         unique_accs = list(dict.fromkeys(raw_accs))
         if len(unique_accs) < 2:
             continue
@@ -233,6 +238,9 @@ def detect_high_frequency(
     LIMIT 25
     """
     rows = neo4j_conn.run(cypher, {"countThreshold": count_threshold})
+    if not rows:
+        return _detect_high_frequency_memory()
+
     alerts = []
     for row in rows:
         acc_id = row["accountId"]
@@ -272,6 +280,9 @@ def detect_large_transaction(
     LIMIT 50
     """
     rows = neo4j_conn.run(cypher, {"threshold": float(threshold)})
+    if not rows:
+        return _detect_large_transaction_memory()
+
     alerts = []
     for row in rows:
         tx_id = row["txId"] or str(uuid.uuid4())
@@ -295,8 +306,167 @@ def detect_large_transaction(
     return alerts
 
 
+def _detect_smurfing_memory() -> list[dict]:
+    from app.services.store import memory_store
+    txs = memory_store.get_transactions(500)
+    receivers = {}
+    for tx in txs:
+        r = tx.get("receiver")
+        s = tx.get("sender")
+        amt = float(tx.get("amount", 0.0))
+        tx_id = tx.get("id") or tx.get("txId")
+        if r and s:
+            if r not in receivers:
+                receivers[r] = {"senders": set(), "txs": [], "amounts": []}
+            receivers[r]["senders"].add(s)
+            if tx_id:
+                receivers[r]["txs"].append(tx_id)
+            receivers[r]["amounts"].append(amt)
+
+    alerts = []
+    for r_id, data in receivers.items():
+        senders = list(data["senders"])
+        if len(senders) >= settings.SMURFING_TRANSACTION_LIMIT:
+            total_amt = round(sum(data["amounts"]), 2)
+            avg_amt = round(total_amt / len(data["amounts"]), 2) if data["amounts"] else 0.0
+            desc = (
+                f"Smurfing syndicate pattern: Account {r_id} received transfers "
+                f"from {len(senders)} distinct senders totaling ${total_amt:,.2f} "
+                f"(Avg: ${avg_amt:,.2f})."
+            )
+            alert = create_fraud_alert(
+                alert_type="SMURFING_STRUCTURING",
+                severity="HIGH" if len(senders) >= 8 else "MEDIUM",
+                description=desc,
+                account_ids=[r_id] + senders,
+                transaction_ids=data["txs"],
+                alert_id=f"SMURF-{r_id}-{len(senders)}",
+            )
+            alerts.append(alert)
+    return alerts
+
+
+def _detect_circular_memory() -> list[dict]:
+    from app.services.store import memory_store
+    txs = memory_store.get_transactions(500)
+    graph = {}
+    for tx in txs:
+        s = tx.get("sender")
+        r = tx.get("receiver")
+        t_id = tx.get("id") or tx.get("txId")
+        if s and r:
+            if s not in graph:
+                graph[s] = []
+            graph[s].append((r, t_id, float(tx.get("amount", 0.0))))
+
+    alerts = []
+    seen = set()
+    for start in graph:
+        for n1, t1, a1 in graph.get(start, []):
+            if n1 == start:
+                continue
+            for n2, t2, a2 in graph.get(n1, []):
+                if n2 == start:
+                    cycle_key = tuple(sorted([start, n1]))
+                    if cycle_key not in seen:
+                        seen.add(cycle_key)
+                        desc = f"Circular money transfer loop detected between {start} and {n1}."
+                        alert = create_fraud_alert(
+                            alert_type="CIRCULAR_TRANSFER",
+                            severity="CRITICAL",
+                            description=desc,
+                            account_ids=[start, n1],
+                            transaction_ids=[t1, t2],
+                            alert_id=f"CIRC-{start[:6]}-{n1[:6]}",
+                        )
+                        alerts.append(alert)
+                else:
+                    for n3, t3, a3 in graph.get(n2, []):
+                        if n3 == start:
+                            cycle_key = tuple(sorted([start, n1, n2]))
+                            if cycle_key not in seen:
+                                seen.add(cycle_key)
+                                desc = f"Circular money flow loop detected across 3 entities: {start} -> {n1} -> {n2} -> {start}."
+                                alert = create_fraud_alert(
+                                    alert_type="CIRCULAR_TRANSFER",
+                                    severity="CRITICAL",
+                                    description=desc,
+                                    account_ids=[start, n1, n2],
+                                    transaction_ids=[t1, t2, t3],
+                                    alert_id=f"CIRC-3-{start[:4]}",
+                                )
+                                alerts.append(alert)
+    return alerts
+
+
+def _detect_high_frequency_memory() -> list[dict]:
+    from app.services.store import memory_store
+    txs = memory_store.get_transactions(500)
+    senders = {}
+    for tx in txs:
+        s = tx.get("sender")
+        r = tx.get("receiver")
+        t_id = tx.get("id") or tx.get("txId")
+        if s:
+            if s not in senders:
+                senders[s] = {"peers": set(), "txs": []}
+            if r:
+                senders[s]["peers"].add(r)
+            if t_id:
+                senders[s]["txs"].append(t_id)
+
+    alerts = []
+    for s_id, data in senders.items():
+        tx_count = len(data["txs"])
+        if tx_count >= settings.HIGH_FREQUENCY_COUNT:
+            peers = list(data["peers"])
+            desc = (
+                f"High-frequency velocity alert: Account {s_id} executed {tx_count} transactions "
+                f"interacting with {len(peers)} distinct counterparties."
+            )
+            alert = create_fraud_alert(
+                alert_type="HIGH_FREQUENCY_VELOCITY",
+                severity="HIGH" if tx_count > settings.HIGH_FREQUENCY_COUNT * 2 else "MEDIUM",
+                description=desc,
+                account_ids=[s_id] + peers[:5],
+                transaction_ids=data["txs"],
+                alert_id=f"FREQ-{s_id}-{tx_count}",
+            )
+            alerts.append(alert)
+    return alerts
+
+
+def _detect_large_transaction_memory() -> list[dict]:
+    from app.services.store import memory_store
+    txs = memory_store.get_transactions(500)
+    alerts = []
+    thresh = float(settings.LARGE_TRANSACTION_THRESHOLD)
+    for tx in txs:
+        amt = float(tx.get("amount", 0.0))
+        if amt >= thresh:
+            s = tx.get("sender", "UNKNOWN")
+            r = tx.get("receiver", "UNKNOWN")
+            t_id = tx.get("id") or tx.get("txId") or str(uuid.uuid4())
+            desc = (
+                f"Threshold breach: Large transaction of ${amt:,.2f} detected "
+                f"from {s} to {r} (Threshold: ${thresh:,.2f})."
+            )
+            alert = create_fraud_alert(
+                alert_type="LARGE_TRANSACTION_EXCEEDED",
+                severity="CRITICAL" if amt >= thresh * 5 else "HIGH",
+                description=desc,
+                account_ids=[s, r],
+                transaction_ids=[t_id],
+                alert_id=f"LARGE-{t_id[:8]}",
+            )
+            alerts.append(alert)
+    return alerts
+
+
 def run_all_detections() -> dict:
     """Executes all modular detection rules and returns unified alerts."""
+    from app.services.store import memory_store
+
     gds_res = run_gds_algorithms()
     smurfing_alerts = detect_smurfing()
     circular_alerts = detect_circular_transfers()
@@ -309,6 +479,7 @@ def run_all_detections() -> dict:
     unique_alerts = {}
     for alert in all_alerts:
         unique_alerts[alert["alert_id"]] = alert
+        memory_store.add_alert(alert)
 
     alert_list = list(unique_alerts.values())
     return {
@@ -326,6 +497,8 @@ def run_all_detections() -> dict:
 
 def get_graph_sample(limit: int = 300) -> dict:
     """Returns nodes and edges formatted for the React force-directed graph component."""
+    from app.services.store import memory_store
+
     cypher = """
     MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
     RETURN s.accountId AS source, r.accountId AS target,
@@ -335,6 +508,9 @@ def get_graph_sample(limit: int = 300) -> dict:
     LIMIT $limit
     """
     rows = neo4j_conn.run(cypher, {"limit": limit})
+    if not rows:
+        return memory_store.get_graph_data(limit)
+
     nodes = {}
     seen_tx_ids = set()
     links = []
