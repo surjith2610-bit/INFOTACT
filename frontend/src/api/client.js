@@ -7,6 +7,15 @@ const api = axios.create({
   timeout: 15000,
 });
 
+// Attach JWT token automatically if stored in localStorage
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("fingraph_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // Helper to extract human-readable error messages from Axios / FastAPI responses
 export const getErrorMessage = (err, defaultMsg = "An unexpected error occurred. Please try again.") => {
   if (!err) return defaultMsg;
@@ -36,6 +45,9 @@ export const fetchAccounts = (limit = 100) => api.get("/api/accounts", { params:
 export const fetchTransactions = (limit = 100) => api.get("/api/transactions", { params: { limit } });
 export const fetchFraudAlerts = (limit = 100) => api.get("/api/fraud-alerts", { params: { limit } });
 export const fetchFraudAlertDetail = (alertId) => api.get(`/api/fraud-alerts/${alertId}`);
+export const submitAlertFeedback = (alertId, status, notes = "") =>
+  api.post(`/api/fraud-alerts/${alertId}/feedback`, { status, notes });
+
 export const graphOverview = (limit = 300) => api.get("/api/graph", { params: { limit } });
 export const runDetection = () => api.post("/api/fraud/detect");
 
@@ -47,5 +59,10 @@ export const uploadCsv = (file) => {
 
 export const generateData = (params) => api.post("/api/data/generate", null, { params });
 
-export default api;
+// --- Auth APIs ---
+export const loginUser = (email, password) => api.post("/api/auth/login", { email, password });
+export const registerUser = (email, password, name, role = "ANALYST") =>
+  api.post("/api/auth/register", { email, password, name, role });
+export const fetchCurrentUser = () => api.get("/api/auth/me");
 
+export default api;

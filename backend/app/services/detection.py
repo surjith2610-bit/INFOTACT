@@ -3,8 +3,10 @@ from datetime import datetime, timezone
 import logging
 from app.database import neo4j_conn
 from app.config import settings
+from app.services.ml_engine import ml_engine
 
 logger = logging.getLogger("detection")
+
 
 GRAPH_NAME = "fingraphProjection"
 
@@ -51,14 +53,26 @@ def create_fraud_alert(
     account_ids: list[str],
     transaction_ids: list[str] = None,
     alert_id: str = None,
+    risk_score: float = None,
+    fraud_probability: float = None,
+    explanations: list[str] = None,
+    status: str = "PENDING",
 ) -> dict:
     """
     Persists a (:FraudAlert) node into Neo4j and connects it to affected (:Account) nodes.
-    Returns the standardized alert dictionary.
+    Includes AI ML Risk Score, Fraud Probability, Explainable AI reasons, and Analyst Status.
     """
     alert_id = alert_id or f"ALT-{str(uuid.uuid4())[:8].upper()}"
     now_iso = datetime.now(timezone.utc).isoformat()
     transaction_ids = transaction_ids or []
+    explanations = explanations or [description]
+
+    if risk_score is None:
+        severity_map = {"CRITICAL": 88.5, "HIGH": 72.0, "MEDIUM": 48.0, "LOW": 22.0}
+        risk_score = severity_map.get(severity, 50.0)
+
+    if fraud_probability is None:
+        fraud_probability = round(risk_score / 100.0, 3)
 
     cypher = """
     MERGE (f:FraudAlert {id: $alertId})
@@ -66,10 +80,19 @@ def create_fraud_alert(
                   f.severity = $severity,
                   f.description = $description,
                   f.createdAt = $createdAt,
-                  f.transactionIds = $transactionIds
+                  f.transactionIds = $transactionIds,
+                  f.riskScore = $riskScore,
+                  f.fraudProbability = $fraudProbability,
+                  f.explanations = $explanations,
+                  f.status = $status
+    ON MATCH SET f.riskScore = $riskScore,
+                 f.fraudProbability = $fraudProbability,
+                 f.explanations = $explanations,
+                 f.status = coalesce(f.status, $status)
     WITH f
     UNWIND $accountIds AS accId
     MERGE (a:Account {accountId: accId})
+    SET a.riskScore = max(coalesce(a.riskScore, 0.0), $riskScore)
     MERGE (f)-[:INVOLVES]->(a)
     RETURN f.id AS alert_id
     """
@@ -84,6 +107,10 @@ def create_fraud_alert(
                 "createdAt": now_iso,
                 "transactionIds": transaction_ids,
                 "accountIds": account_ids,
+                "riskScore": float(risk_score),
+                "fraudProbability": float(fraud_probability),
+                "explanations": explanations,
+                "status": status,
             },
         )
     except Exception as e:
@@ -91,13 +118,20 @@ def create_fraud_alert(
 
     return {
         "alert_id": alert_id,
+        "id": alert_id,
         "type": alert_type,
         "severity": severity,
         "description": description,
         "account_ids": account_ids,
         "transaction_ids": transaction_ids,
         "timestamp": now_iso,
+        "createdAt": now_iso,
+        "risk_score": float(risk_score),
+        "fraud_probability": float(fraud_probability),
+        "explanations": explanations,
+        "status": status,
     }
+
 
 
 def detect_smurfing(
@@ -151,13 +185,22 @@ def detect_smurfing(
         )
 
         all_accounts = list(set([receiver_id] + senders))
+        ai_risk = ml_engine.evaluate_fraud_risk(
+            amount=total_amount,
+            receiver_velocity=sender_count,
+            receiver_degree=len(all_accounts),
+            has_shared_ip=(distinct_ips > 0 and distinct_ips <= 2),
+        )
         alert_dict = create_fraud_alert(
             alert_type="SMURFING_STRUCTURING",
-            severity=severity,
+            severity=ai_risk["risk_level"],
             description=desc,
             account_ids=all_accounts,
             transaction_ids=tx_ids,
             alert_id=f"SMURF-{receiver_id}-{sender_count}",
+            risk_score=ai_risk["risk_score"],
+            fraud_probability=ai_risk["fraud_probability"],
+            explanations=ai_risk["explanations"],
         )
         alerts.append(alert_dict)
     return alerts
@@ -209,6 +252,12 @@ def detect_circular_transfers(
             f"{path_str}. Total flow: ${total_cycle_amount:,.2f}."
         )
 
+        ai_risk = ml_engine.evaluate_fraud_risk(
+            amount=total_cycle_amount,
+            sender_degree=len(unique_accs),
+            is_circular=True,
+        )
+
         alert_dict = create_fraud_alert(
             alert_type="CIRCULAR_TRANSFER",
             severity="CRITICAL",
@@ -216,6 +265,9 @@ def detect_circular_transfers(
             account_ids=unique_accs,
             transaction_ids=tx_ids,
             alert_id=f"CIRC-{''.join(unique_accs[:3])}",
+            risk_score=ai_risk["risk_score"],
+            fraud_probability=ai_risk["fraud_probability"],
+            explanations=ai_risk["explanations"],
         )
         alerts.append(alert_dict)
     return alerts
@@ -253,13 +305,21 @@ def detect_high_frequency(
             f"interacting with {len(peers)} distinct counterparties."
         )
         all_accounts = list(set([acc_id] + peers[:5]))
+        ai_risk = ml_engine.evaluate_fraud_risk(
+            amount=500.0,
+            sender_velocity=tx_count,
+            sender_degree=len(peers),
+        )
         alert_dict = create_fraud_alert(
             alert_type="HIGH_FREQUENCY_VELOCITY",
-            severity="HIGH" if tx_count > count_threshold * 2 else "MEDIUM",
+            severity=ai_risk["risk_level"],
             description=desc,
             account_ids=all_accounts,
             transaction_ids=tx_ids,
             alert_id=f"FREQ-{acc_id}-{tx_count}",
+            risk_score=ai_risk["risk_score"],
+            fraud_probability=ai_risk["fraud_probability"],
+            explanations=ai_risk["explanations"],
         )
         alerts.append(alert_dict)
     return alerts
@@ -294,13 +354,20 @@ def detect_large_transaction(
             f"Threshold breach: Large transaction of ${amount:,.2f} detected "
             f"from {sender} to {receiver} (Threshold: ${threshold:,.2f})."
         )
+        ai_risk = ml_engine.evaluate_fraud_risk(
+            amount=amount,
+            historical_avg=1000.0,
+        )
         alert_dict = create_fraud_alert(
             alert_type="LARGE_TRANSACTION_EXCEEDED",
-            severity="CRITICAL" if amount >= threshold * 5 else "HIGH",
+            severity=ai_risk["risk_level"],
             description=desc,
             account_ids=[sender, receiver],
             transaction_ids=[tx_id],
             alert_id=f"LARGE-{tx_id[:8]}",
+            risk_score=ai_risk["risk_score"],
+            fraud_probability=ai_risk["fraud_probability"],
+            explanations=ai_risk["explanations"],
         )
         alerts.append(alert_dict)
     return alerts

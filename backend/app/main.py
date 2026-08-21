@@ -44,6 +44,23 @@ app.include_router(api_router)
 app.include_router(legacy_data_router)
 app.include_router(legacy_graph_router)
 
+from app.services.websocket import ws_manager
+from fastapi import WebSocket, WebSocketDisconnect
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+    except Exception as e:
+        logger.warning(f"[WS] WebSocket connection closed: {e}")
+        ws_manager.disconnect(websocket)
+
 
 @app.on_event("startup")
 def on_startup():

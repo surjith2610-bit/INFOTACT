@@ -1,196 +1,130 @@
-# FinGraph — Real-Time Fraud Syndicate Analytics
+# FinGraph — Real-Time AI Fraud Detection Platform
 
-FinGraph is an enterprise-grade financial fraud and Anti-Money Laundering (AML) detection platform. It processes streaming transaction records through Apache Kafka, models graph topologies in Neo4j, executes real-time and windowed fraud detection rules, exposes standardized REST APIs, and renders an interactive force-directed graph dashboard for financial crime analysts.
+FinGraph is an enterprise-grade financial fraud and Anti-Money Laundering (AML) detection platform. It ingests transaction streams via **Apache Kafka**, evaluates real-time anomaly scores using **Scikit-Learn Isolation Forest & Graph Topology Engine**, persists relationship graphs in **Neo4j**, broadcasts zero-latency updates via **WebSockets**, and renders an interactive graph analytics workbench for financial crime analysts.
 
 ---
 
-## 1. System Architecture
+## 🚀 Key Improvements & Features
+
+1. **Real-Time Event-Driven Architecture**:
+   - Apache Kafka transaction ingestion & replay stream.
+   - Python & PyFlink stream processing engine.
+   - WebSocket connection for instant live feed updates and toast alerts without polling delay.
+
+2. **AI-Powered Fraud Detection Engine**:
+   - **Isolation Forest** Machine Learning model for anomaly detection.
+   - Unified **Risk Score (0–100)** formula:
+     $$\text{Risk Score} = \text{Velocity} + \text{Amount Anomaly} + \text{Graph Centrality} + \text{ML Anomaly Score}$$
+   - **Explainable AI (XAI)** human-readable breakdowns detailing why transactions/accounts are flagged.
+
+3. **Interactive Graph Analytics Workbench**:
+   - Force-directed graph with interactive **Pan, Zoom, and Node Dragging**.
+   - Dynamic node sizing by transaction volume & degree.
+   - Risk color gradient: Emerald (`<30`) → Amber (`30-70`) → Red (`>70`).
+   - Pattern Highlight Filters: **Starburst/Smurfing**, **Circular Loops**, and **High Risk Nodes**.
+
+4. **Fraud Investigation Panel & Analyst Feedback**:
+   - Slide-over workbench showing multi-hop account sub-graph, AI explanations, and transaction chain.
+   - Interactive Analyst Action buttons: **"Mark as Confirmed Fraud"** and **"Mark as False Positive"** with audit logs.
+
+5. **Security & Authentication**:
+   - JWT-based authentication with role-based access control (`Admin`, `Fraud Analyst`).
+   - Input validation & rate-limiting middleware.
+
+---
+
+## 🏗️ System Architecture
 
 ```
-                                  ┌────────────────────────┐
-                                  │ Synthetic Generator /  │
-                                  │ CSV Dataset Upload     │
-                                  └───────────┬────────────┘
-                                              │
-                                              ▼
-┌────────────────────────┐        ┌────────────────────────┐        ┌────────────────────────┐
-│  React Analyst Desk    │ <====> │   FastAPI Backend API  │ ====>  │ Kafka Event Stream     │
-│  (Port 5173)           │        │   (Port 5000)          │        │ (Topic: fingraph-tx)   │
-└────────────────────────┘        └───────────┬────────────┘        └───────────┬────────────┘
-                                              │                                 │
-                                              ▼                                 ▼
-                                  ┌────────────────────────┐        ┌────────────────────────┐
-                                  │ Neo4j Graph Database   │ <====  │ Python Stream          │
-                                  │ (Accounts, Transfers,  │        │ Processing Worker      │
-                                  │  FraudAlerts)          │        │ (Real-Time Rules)      │
-                                  └────────────────────────┘        └────────────────────────┘
++-----------------------------------------------------------------------------------+
+|                                 SYSTEM ARCHITECTURE                               |
++-----------------------------------------------------------------------------------+
+|  [CSV Upload / Replay Script]   --->   [Kafka Topic: fingraph-transactions]       |
+|                                                    |                              |
+|                                                    v                              |
+|                                      [Stream Processing Worker]                   |
+|                                                    |                              |
+|         +------------------------------------------+--------------------------+   |
+|         |                                                                     |   |
+|         v                                                                     v   |
+|  [Neo4j Graph Database]                                       [FastAPI Microservices] |
+|  (Person, Account, Bank, Edges)                               (Auth, ML, Graph, WS)  |
+|                                                                               |   |
+|                                                                               v   |
+|                                                                     [WebSocket Server]|
+|                                                                               |   |
+|                                                                               v   |
+|                                                               [React Live Dashboard] |
++-----------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 2. Fraud Detection Rules Engine
+## ⚡ Quickstart Guide
 
-FinGraph includes a modular fraud engine detecting four critical AML typologies:
+### Option 1: Docker Compose (Recommended)
 
-1. **Smurfing & Structuring (`detect_smurfing`)**
-   - Detects multiple lower-value transfers funneled from distinct sender accounts into a central receiver/shell account within a configurable time window.
-   - Highlights shared infrastructure tells (IP address overlap) and structuring beneath reporting thresholds ($10,000).
-
-2. **Circular Money Transfers (`detect_circular_transfers`)**
-   - Performs graph traversal up to a configurable maximum cycle depth (`CIRCULAR_MAX_DEPTH`) to spot money cycling patterns (e.g. `A -> B -> C -> A` or `A -> B -> A`).
-
-3. **High-Frequency Velocity (`detect_high_frequency`)**
-   - Identifies accounts initiating or receiving an abnormally high number of transactions within a short timeframe (`HIGH_FREQUENCY_COUNT` in `HIGH_FREQUENCY_WINDOW_MINUTES`).
-
-4. **Large Transaction Threshold Exceeded (`detect_large_transaction`)**
-   - Flags individual transfers exceeding configurable financial thresholds (`LARGE_TRANSACTION_THRESHOLD`).
-
----
-
-## 3. Prerequisites & Environment Setup
-
-| Requirement | Supported Version | Purpose |
-|---|---|---|
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Latest | Container orchestration for Kafka, Neo4j, Backend, Worker & Frontend |
-| [Node.js](https://nodejs.org/) | 18+ | Frontend dashboard runtime |
-| [Python](https://www.python.org/) | 3.11+ | Backend API & stream processor worker |
-
-### Environment Configuration
-
-Copy `.env.example` to create your active `.env` file:
-
-```bash
-cp .env.example .env
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-```
-
-#### Core Environment Variables
-
-| Variable | Default Value | Description |
-|---|---|---|
-| `PORT` | `5000` | Backend REST API server port |
-| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` (Docker) / `localhost:9092` (Local) | Kafka broker address |
-| `KAFKA_TOPIC_TRANSACTIONS` | `fingraph-transactions` | Primary streaming event topic |
-| `NEO4J_URI` | `bolt://neo4j:7687` (Docker) / `bolt://localhost:7687` (Local) | Neo4j Bolt protocol URI |
-| `NEO4J_USER` | `neo4j` | Database username |
-| `NEO4J_PASSWORD` | `fingraph123` | Database password |
-| `SEED_DATA` | `true` | Idempotent demo data generator switch |
-| `DATA_PATH` | `./data/sample_transactions.csv` | Default CSV dataset location |
-| `VITE_API_URL` | `http://localhost:5000` | Frontend backend API target URL |
-
----
-
-## 4. Automated Startup (Docker Compose)
-
-Run the entire FinGraph stack end-to-end with a single command:
+Start the entire platform (Kafka, Zookeeper, Neo4j, FastAPI Backend, Stream Processor, and React Dashboard) with a single command:
 
 ```bash
 docker compose up --build
 ```
 
-### Services Started:
-
-- **Frontend Analyst Dashboard**: http://localhost:5173
-- **FastAPI Backend REST API**: http://localhost:5000 (Interactive OpenAPI Docs: http://localhost:5000/docs)
-- **Neo4j Browser Console**: http://localhost:7474 (Credentials: `neo4j` / `fingraph123`)
-- **Kafka Broker**: `localhost:9092` / `localhost:29092`
-- **Stream Processing Consumer**: Containerized worker consuming events in real-time.
+Access the applications:
+- **React Analyst Dashboard**: [http://localhost:5173](http://localhost:5173)
+- **FastAPI API & OpenAPI Docs**: [http://localhost:5001/docs](http://localhost:5001/docs)
+- **Neo4j Browser UI**: [http://localhost:7474](http://localhost:7474) (Credentials: `neo4j` / `fingraph123`)
 
 ---
 
-## 5. Local Development Startup (Without Docker)
+### Option 2: Local Development Setup
 
-If running individual components locally outside Docker containers:
-
-### Step 1: Start Databases (Kafka & Neo4j)
-```bash
-docker compose up kafka neo4j zookeeper
-```
-
-### Step 2: Start Backend API
+#### 1. Backend Setup
 ```bash
 cd backend
+python -m venv .venv
+# On Windows: .venv\Scripts\activate | On Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
-python -m app.main
+uvicorn app.main:app --host 0.0.0.0 --port 5001 --reload
 ```
 
-### Step 3: Start Stream Processing Worker
+#### 2. Run Backend Unit & Integration Tests
 ```bash
-pip install -r stream_processor/requirements.txt
-python stream_processor/main.py
+cd backend
+pytest tests/
 ```
 
-### Step 4: Start Frontend Analyst Dashboard
+#### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open **http://localhost:5173** to launch the analyst dashboard desk.
-
----
-
-## 6. REST API Endpoint Reference
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/health` | API health check & service status |
-| `GET` | `/api/stats` | Executive metrics (total accounts, transactions, alert counts) |
-| `GET` | `/api/accounts` | Graph account nodes list & risk scores |
-| `GET` | `/api/transactions` | Recent transactions log payload |
-| `GET` | `/api/fraud-alerts` | Active stored fraud alerts list |
-| `GET` | `/api/fraud-alerts/{id}` | Detailed alert inspection by ID |
-| `GET` | `/api/graph` | Force-directed graph topology (nodes & links) |
-| `POST` | `/api/fraud/detect` | Execute modular fraud detection engine |
-| `POST` | `/api/data/upload-csv` | Upload custom transaction CSV dataset |
-| `POST | `/api/data/generate` | Generate synthetic dataset with planted syndicate ring |
-
----
-
-## 7. Automated Testing Suite
-
-Execute the Python test suite verifying API routes, dataset ingestion, and fraud detection logic:
-
+#### 4. Continuous Stream Replay Script
 ```bash
-python -m pytest backend/tests/test_pipeline.py
-```
-
-Validate frontend production build:
-
-```bash
-cd frontend
-npm run build
+python ingestion/replay.py --csv data/sample_transactions.csv --rate 2.0 --loop
 ```
 
 ---
 
-## 8. Windows & Docker Troubleshooting Guide
+## 🔐 Credentials & Demo Accounts
 
-### 1. Docker Desktop / Engine Connection Failure
-- **Symptom**: `failed to connect to docker API`, `npipe`, or `Docker Desktop Linux Engine not found`.
-- **Solution**: Open Docker Desktop on Windows. Ensure "Use the WSL 2 based engine" is enabled under Settings -> General. Run PowerShell as Administrator and verify `docker info` completes cleanly.
+Default JWT Login Accounts:
+- **Security Administrator**: `admin@fingraph.io` / `admin123`
+- **Fraud Analyst**: `analyst@fingraph.io` / `analyst123`
 
-### 2. Kafka Connection Refused / Advertised Listener Error
-- **Symptom**: `NoBrokersAvailable` or connection timeouts.
-- **Solution**: Inside Docker containers, use `kafka:9092`. For applications running directly on Windows host, set `KAFKA_BOOTSTRAP_SERVERS=localhost:9092` or `localhost:29092`.
+---
 
-### 3. `EADDRINUSE: address already in use :::5000`
-- **Symptom**: Backend server fails to start because port 5000 is occupied.
-- **Solution**: Find the running process on Windows using PowerShell:
-  ```powershell
-  Get-NetTCPConnection -LocalPort 5000 | Select-Object OwningProcess
-  ```
-  Terminate the process if appropriate, or set a custom port in `.env` (e.g. `PORT=8000`).
+## 📁 Repository Layout
 
-### 4. PowerShell Script Execution Policy
-- **Symptom**: `npm` or `vite` commands blocked by execution policy.
-- **Solution**: Run PowerShell as Administrator and execute:
-  ```powershell
-  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-  ```
-
-### 5. Frontend Cannot Reach Backend / CORS Error
-- **Symptom**: Dashboard displays "Unable to reach backend API server".
-- **Solution**: Verify `VITE_API_URL` in `frontend/.env` matches the backend host/port (`http://localhost:5000`), and `FRONTEND_ORIGIN` in `backend/.env` allows `http://localhost:5173`.
+```
+/backend            FastAPI Backend (Auth, ML Engine, Neo4j queries, WebSockets)
+/frontend           React Dashboard (Interactive Force Graph, Investigation Workbench)
+/stream_processor   Python Kafka stream processor worker
+/ingestion          Transaction CSV parser, stream replay script, latency verifier
+/flink              PyFlink streaming job & consumer fallback
+/data               Sample transaction datasets (IBM AML, PaySim compatible)
+.github/workflows   GitHub Actions CI workflow
+docker-compose.yml  Orchestration manifest for local/dev services
+```

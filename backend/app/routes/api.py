@@ -3,12 +3,22 @@ import random
 import uuid
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Optional, List
 import pandas as pd
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Depends
+from pydantic import BaseModel, EmailStr
 
 from app.database import neo4j_conn
 from app.services.kafka_producer import publish_transaction
 from app.services.store import memory_store
+from app.services.websocket import ws_manager
+from app.services.auth import (
+    authenticate_user,
+    create_access_token,
+    decode_access_token,
+    register_user,
+    USERS_DB,
+)
 from app.services.detection import (
     run_all_detections,
     get_graph_sample,
@@ -22,6 +32,41 @@ logger = logging.getLogger("api")
 router = APIRouter(prefix="/api", tags=["api"])
 
 REQUIRED_COLUMNS = {"sender_account", "receiver_account", "amount"}
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+    role: Optional[str] = "ANALYST"
+
+
+class AlertFeedbackRequest(BaseModel):
+    status: str  # "CONFIRMED_FRAUD" | "FALSE_POSITIVE" | "PENDING"
+    notes: Optional[str] = ""
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+@router.websocket("/ws")
+async def api_websocket_endpoint(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+    except Exception as e:
+        ws_manager.disconnect(websocket)
+
+
 
 
 def _normalize_dataframe_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -247,6 +292,72 @@ async def get_transactions(limit: int = 100):
     return res
 
 
+@router.post("/auth/login")
+async def login(req: LoginRequest):
+    """Authenticates user and returns JWT token."""
+    user = authenticate_user(req.email, req.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    token = create_access_token({"sub": user["email"], "role": user["role"], "name": user["name"]})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "role": user["role"],
+        }
+    }
+
+
+@router.post("/auth/register")
+async def register(req: RegisterRequest):
+    """Registers a new user account."""
+    try:
+        user = register_user(req.email, req.password, req.name, req.role or "ANALYST")
+        token = create_access_token({"sub": user["email"], "role": user["role"], "name": user["name"]})
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "name": user["name"],
+                "role": user["role"],
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/auth/me")
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    """Retrieves current logged in user profile."""
+    if not authorization or not authorization.startswith("Bearer "):
+        # Demo fallback for unauthenticated development view
+        user = USERS_DB["admin@fingraph.io"]
+        return {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "role": user["role"],
+        }
+    token = authorization.split(" ")[1]
+    payload = decode_access_token(token)
+    if not payload or "sub" not in payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired authentication token.")
+    user = USERS_DB.get(payload["sub"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+    }
+
+
 @router.get("/fraud-alerts")
 async def get_fraud_alerts(limit: int = 100):
     """Retrieves stored fraud alerts from Neo4j or Memory."""
@@ -254,12 +365,17 @@ async def get_fraud_alerts(limit: int = 100):
     MATCH (fa:FraudAlert)
     OPTIONAL MATCH (fa)-[:INVOLVES]->(a:Account)
     RETURN fa.id AS id,
+           fa.id AS alert_id,
            fa.type AS type,
            fa.severity AS severity,
            fa.description AS description,
            fa.createdAt AS timestamp,
            collect(DISTINCT a.accountId) AS account_ids,
-           coalesce(fa.transactionIds, []) AS transaction_ids
+           coalesce(fa.transactionIds, []) AS transaction_ids,
+           coalesce(fa.riskScore, 75.0) AS risk_score,
+           coalesce(fa.fraudProbability, 0.75) AS fraud_probability,
+           coalesce(fa.explanations, [fa.description]) AS explanations,
+           coalesce(fa.status, 'PENDING') AS status
     ORDER BY fa.createdAt DESC
     LIMIT $limit
     """
@@ -276,12 +392,18 @@ async def get_fraud_alert_detail(alert_id: str):
     MATCH (fa:FraudAlert {id: $alertId})
     OPTIONAL MATCH (fa)-[:INVOLVES]->(a:Account)
     RETURN fa.id AS id,
+           fa.id AS alert_id,
            fa.type AS type,
            fa.severity AS severity,
            fa.description AS description,
            fa.createdAt AS timestamp,
            collect(DISTINCT a.accountId) AS account_ids,
-           coalesce(fa.transactionIds, []) AS transaction_ids
+           coalesce(fa.transactionIds, []) AS transaction_ids,
+           coalesce(fa.riskScore, 75.0) AS risk_score,
+           coalesce(fa.fraudProbability, 0.75) AS fraud_probability,
+           coalesce(fa.explanations, [fa.description]) AS explanations,
+           coalesce(fa.status, 'PENDING') AS status,
+           fa.analystNotes AS analyst_notes
     """
     res = neo4j_conn.run(cypher, {"alertId": alert_id})
     if res:
@@ -292,6 +414,35 @@ async def get_fraud_alert_detail(alert_id: str):
             return a
 
     raise HTTPException(status_code=404, detail="Fraud alert not found")
+
+
+@router.post("/fraud-alerts/{alert_id}/feedback")
+async def submit_alert_feedback(alert_id: str, req: AlertFeedbackRequest):
+    """Updates analyst decision ('CONFIRMED_FRAUD' | 'FALSE_POSITIVE' | 'PENDING')."""
+    if req.status not in ["CONFIRMED_FRAUD", "FALSE_POSITIVE", "PENDING"]:
+        raise HTTPException(status_code=400, detail="Invalid status value.")
+
+    cypher = """
+    MATCH (fa:FraudAlert {id: $alertId})
+    SET fa.status = $status,
+        fa.analystNotes = $notes,
+        fa.reviewedAt = datetime()
+    RETURN fa.id AS id, fa.status AS status, fa.analystNotes AS notes
+    """
+    res = neo4j_conn.run(cypher, {"alertId": alert_id, "status": req.status, "notes": req.notes or ""})
+    
+    # Also update memory store if present
+    for a in memory_store.get_alerts(1000):
+        if a.get("alert_id") == alert_id or a.get("id") == alert_id:
+            a["status"] = req.status
+            a["notes"] = req.notes
+
+    return {
+        "message": f"Alert {alert_id} status updated to {req.status}.",
+        "alert_id": alert_id,
+        "status": req.status,
+        "notes": req.notes,
+    }
 
 
 @router.get("/graph")
