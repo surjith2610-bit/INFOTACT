@@ -633,7 +633,7 @@ export default function Dashboard() {
                     <th className="p-3.5">Transaction ID</th>
                     <th className="p-3.5">Sender Account</th>
                     <th className="p-3.5">Receiver Account</th>
-                    <th className="p-3.5">Amount ($)</th>
+                    <th className="p-3.5">Amount (₹)</th>
                     <th className="p-3.5">Timestamp</th>
                     <th className="p-3.5 text-right">Inspect</th>
                   </tr>
@@ -652,7 +652,7 @@ export default function Dashboard() {
                         <td className="p-3.5 font-semibold text-slate-200">{tx.sender}</td>
                         <td className="p-3.5 font-semibold text-slate-200">{tx.receiver}</td>
                         <td className={`p-3.5 font-bold ${Number(tx.amount) >= 10000 ? "text-red-400" : "text-emerald-400"}`}>
-                          ${Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ₹{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </td>
                         <td className="p-3.5 text-slate-400">{new Date(tx.timestamp).toLocaleTimeString()}</td>
                         <td className="p-3.5 text-right">

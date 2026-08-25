@@ -209,7 +209,7 @@ export default function NetworkGraph({
                 Inbound: ${m.inDegree || 0} | Outbound: ${m.outDegree || 0}
               </div>
               <div style="font-size: 11px; color: #34D399; margin-top: 2px;">
-                Total Volume: $${(m.totalAmount || 0).toLocaleString()}
+                Total Volume: ₹${(m.totalAmount || 0).toLocaleString()}
               </div>
             </div>
           `;

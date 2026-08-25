@@ -112,7 +112,7 @@ def process_transaction(tx: dict, driver):
 
     timestamp = str(tx.get("timestamp") or datetime.now(timezone.utc).isoformat())
 
-    logger.info(f"[KAFKA] Transaction received: {sender} ({sender_person}) -> {receiver} ({receiver_person}) (${amount:,.2f})")
+    logger.info(f"[KAFKA] Transaction received: {sender} ({sender_person}) -> {receiver} ({receiver_person}) (₹{amount:,.2f})")
 
     # 1. Update Neo4j graph synchronously (Accounts, Persons, Banks, Edges)
     cypher_write = """

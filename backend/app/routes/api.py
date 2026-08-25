@@ -132,7 +132,7 @@ def _clean_amount(val) -> float:
         return 0.0
     if isinstance(val, (int, float)):
         return float(val)
-    val_str = str(val).replace("$", "").replace(",", "").strip()
+    val_str = str(val).replace("₹", "").replace("$", "").replace(",", "").strip()
     try:
         return float(val_str)
     except ValueError:

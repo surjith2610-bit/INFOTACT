@@ -75,7 +75,7 @@ def seed_database() -> dict:
         id: 'ALT-SEED-01',
         type: 'SMURFING_STRUCTURING',
         severity: 'HIGH',
-        desc: 'Smurfing syndicate pattern: Account SHELL01 received transfers from 4 distinct senders totaling $39,050.00.',
+        desc: 'Smurfing syndicate pattern: Account SHELL01 received transfers from 4 distinct senders totaling ₹39,050.00.',
         accs: ['SHELL01', 'SMURF001', 'SMURF002', 'SMURF003']
       },
       {
@@ -89,7 +89,7 @@ def seed_database() -> dict:
         id: 'ALT-SEED-03',
         type: 'LARGE_TRANSACTION_EXCEEDED',
         severity: 'HIGH',
-        desc: 'Threshold breach: Large transaction of $35,000.00 detected from SHELL01 to ACC0004.',
+        desc: 'Threshold breach: Large transaction of ₹35,000.00 detected from SHELL01 to ACC0004.',
         accs: ['SHELL01', 'ACC0004']
       }
     ] AS alt

@@ -180,8 +180,8 @@ def detect_smurfing(
         severity = "HIGH" if distinct_ips <= 2 or sender_count >= 8 else "MEDIUM"
         desc = (
             f"Smurfing syndicate pattern: Account {receiver_id} received transfers "
-            f"from {sender_count} distinct senders totaling ${total_amount:,.2f} "
-            f"(Avg: ${avg_amount:,.2f}). Shared IPs: {distinct_ips}."
+            f"from {sender_count} distinct senders totaling ₹{total_amount:,.2f} "
+            f"(Avg: ₹{avg_amount:,.2f}). Shared IPs: {distinct_ips}."
         )
 
         all_accounts = list(set([receiver_id] + senders))
@@ -249,7 +249,7 @@ def detect_circular_transfers(
         path_str = " -> ".join(unique_accs) + f" -> {unique_accs[0]}"
         desc = (
             f"Circular money flow detected across {len(unique_accs)} entities: "
-            f"{path_str}. Total flow: ${total_cycle_amount:,.2f}."
+            f"{path_str}. Total flow: ₹{total_cycle_amount:,.2f}."
         )
 
         ai_risk = ml_engine.evaluate_fraud_risk(
@@ -351,8 +351,8 @@ def detect_large_transaction(
         amount = row["amount"]
 
         desc = (
-            f"Threshold breach: Large transaction of ${amount:,.2f} detected "
-            f"from {sender} to {receiver} (Threshold: ${threshold:,.2f})."
+            f"Threshold breach: Large transaction of ₹{amount:,.2f} detected "
+            f"from {sender} to {receiver} (Threshold: ₹{threshold:,.2f})."
         )
         ai_risk = ml_engine.evaluate_fraud_risk(
             amount=amount,
@@ -398,8 +398,8 @@ def _detect_smurfing_memory() -> list[dict]:
             avg_amt = round(total_amt / len(data["amounts"]), 2) if data["amounts"] else 0.0
             desc = (
                 f"Smurfing syndicate pattern: Account {r_id} received transfers "
-                f"from {len(senders)} distinct senders totaling ${total_amt:,.2f} "
-                f"(Avg: ${avg_amt:,.2f})."
+                f"from {len(senders)} distinct senders totaling ₹{total_amt:,.2f} "
+                f"(Avg: ₹{avg_amt:,.2f})."
             )
             alert = create_fraud_alert(
                 alert_type="SMURFING_STRUCTURING",
@@ -515,8 +515,8 @@ def _detect_large_transaction_memory() -> list[dict]:
             r = tx.get("receiver", "UNKNOWN")
             t_id = tx.get("id") or tx.get("txId") or str(uuid.uuid4())
             desc = (
-                f"Threshold breach: Large transaction of ${amt:,.2f} detected "
-                f"from {s} to {r} (Threshold: ${thresh:,.2f})."
+                f"Threshold breach: Large transaction of ₹{amt:,.2f} detected "
+                f"from {s} to {r} (Threshold: ₹{thresh:,.2f})."
             )
             alert = create_fraud_alert(
                 alert_type="LARGE_TRANSACTION_EXCEEDED",

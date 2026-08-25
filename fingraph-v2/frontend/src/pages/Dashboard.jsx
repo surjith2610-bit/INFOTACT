@@ -333,7 +333,7 @@ export default function Dashboard() {
                       <td className="py-2 px-3 text-teal">{tx.id}</td>
                       <td className="py-2 px-3 text-white">{tx.sender}</td>
                       <td className="py-2 px-3 text-white">{tx.receiver}</td>
-                      <td className="py-2 px-3 text-right font-bold text-white">${tx.amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td className="py-2 px-3 text-right font-bold text-white">₹{tx.amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       <td className="py-2 px-3 text-right text-ledger">{tx.timestamp ? new Date(tx.timestamp).toLocaleTimeString() : "-"}</td>
                     </tr>
                   ))

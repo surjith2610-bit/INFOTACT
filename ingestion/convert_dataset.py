@@ -87,7 +87,7 @@ def convert_and_enrich_dataset(
         # Amount from 'sale_price' or fallback
         raw_price = row.get("sale_price") or row.get("amount") or 100.0
         try:
-            val_str = str(raw_price).replace("$", "").replace(",", "").strip()
+            val_str = str(raw_price).replace("₹", "").replace("$", "").replace(",", "").strip()
             amount = round(float(val_str), 2)
             if amount <= 0:
                 amount = 50.0

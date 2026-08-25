@@ -129,13 +129,13 @@ class FraudMLEngine:
         amount_ratio = amount / max(1.0, historical_avg)
         if amount >= 10000.0:
             amount_score = 25.0
-            explanations.append(f"Large transaction threshold breached (${amount:,.2f} >= $10,000) (+25 pts)")
+            explanations.append(f"Large transaction threshold breached (₹{amount:,.2f} >= ₹10,000) (+25 pts)")
         elif amount_ratio >= 5.0:
             amount_score = 20.0
-            explanations.append(f"Amount anomaly: ${amount:,.2f} is {amount_ratio:.1f}x higher than baseline (+20 pts)")
+            explanations.append(f"Amount anomaly: ₹{amount:,.2f} is {amount_ratio:.1f}x higher than baseline (+20 pts)")
         elif amount >= 9000.0 and amount < 10000.0:
             amount_score = 22.0
-            explanations.append(f"Smurfing amount pattern detected (${amount:,.2f} just under $10,000 limit) (+22 pts)")
+            explanations.append(f"Smurfing amount pattern detected (₹{amount:,.2f} just under ₹10,000 limit) (+22 pts)")
         else:
             amount_score = min(15.0, (amount / 1000.0) * 1.5)
 

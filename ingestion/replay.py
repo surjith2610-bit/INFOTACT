@@ -71,7 +71,7 @@ def replay_transactions(
                 sent_count += 1
                 logger.info(
                     f"[REPLAY #{sent_count}] Sent tx '{tx['txId']}': "
-                    f"{tx['sender']} -> {tx['receiver']} (${tx['amount']:,.2f})"
+                    f"{tx['sender']} -> {tx['receiver']} (₹{tx['amount']:,.2f})"
                 )
 
                 if interval > 0:
