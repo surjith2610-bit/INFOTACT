@@ -43,6 +43,11 @@ export const getErrorMessage = (err, defaultMsg = "An unexpected error occurred.
 export const fetchStats = () => api.get("/api/stats");
 export const fetchAccounts = (limit = 100) => api.get("/api/accounts", { params: { limit } });
 export const fetchTransactions = (limit = 100) => api.get("/api/transactions", { params: { limit } });
+export const fetchTransactionTrace = (accountId, params = {}) =>
+  api.get(`/api/transactions/trace/${accountId}`, { params });
+export const searchTransactionsTrace = (params = {}) =>
+  api.get("/api/transactions/trace", { params });
+
 export const fetchFraudAlerts = (limit = 100) => api.get("/api/fraud-alerts", { params: { limit } });
 export const fetchFraudAlertDetail = (alertId) => api.get(`/api/fraud-alerts/${alertId}`);
 export const submitAlertFeedback = (alertId, status, notes = "") =>

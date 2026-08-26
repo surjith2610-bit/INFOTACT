@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import NetworkGraph from "../components/NetworkGraph.jsx";
 import InvestigationPanel from "../components/InvestigationPanel.jsx";
+import TransactionTraceView from "../components/TransactionTraceView.jsx";
 import AuthModal from "../components/AuthModal.jsx";
 import { useWebSocket } from "../hooks/useWebSocket.js";
 import {
@@ -273,6 +274,16 @@ export default function Dashboard() {
                 Analytics & Topology
               </button>
               <button
+                onClick={() => setActiveTab("trace")}
+                className={`px-3.5 py-1.5 rounded-md font-semibold transition flex items-center gap-1.5 ${
+                  activeTab === "trace"
+                    ? isDark ? "bg-teal-500 text-slate-950 shadow" : "bg-teal-600 text-white shadow"
+                    : isDark ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                🔍 Transaction Trace
+              </button>
+              <button
                 onClick={() => setActiveTab("alerts")}
                 className={`px-3.5 py-1.5 rounded-md font-semibold transition flex items-center gap-1.5 ${
                   activeTab === "alerts"
@@ -424,6 +435,14 @@ export default function Dashboard() {
             <div className="text-[11px] font-mono text-red-400 mt-1">Action Required Immediately</div>
           </div>
         </div>
+
+        {/* TAB: Transaction Trace Analytics */}
+        {activeTab === "trace" && (
+          <TransactionTraceView
+            selectedAccountId={investigationAccountId || ""}
+            onSelectAccount={(accId) => setInvestigationAccountId(accId)}
+          />
+        )}
 
         {/* TAB 1: Analytics & Interactive Graph Topology */}
         {activeTab === "analytics" && (

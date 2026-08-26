@@ -292,6 +292,236 @@ async def get_transactions(limit: int = 100):
     return res
 
 
+def _evaluate_suspicious_flags(txs: list) -> list:
+    """Evaluates fraud flags (smurfing pattern, velocity) on transactions."""
+    processed = []
+    sender_ts_map = {}
+    for tx in txs:
+        amt = float(tx.get("amount", 0.0) or 0.0)
+        sender = tx.get("from_account") or tx.get("sender_account") or tx.get("sender") or ""
+        receiver = tx.get("to_account") or tx.get("receiver_account") or tx.get("receiver") or ""
+        
+        is_smurfing = 9000 <= amt < 10000
+        is_large = amt >= 10000
+        
+        key = f"{sender}->{receiver}"
+        if key not in sender_ts_map:
+            sender_ts_map[key] = 0
+        sender_ts_map[key] += 1
+        is_velocity = sender_ts_map[key] > 2
+        
+        is_suspicious = is_smurfing or is_velocity or bool(tx.get("is_suspicious", False))
+        
+        reasons = []
+        if is_smurfing:
+            reasons.append("Smurfing / Structuring Pattern (< ₹10,000 threshold)")
+        if is_velocity:
+            reasons.append("High Frequency Repeated Transfer")
+        if is_large:
+            reasons.append("Large Transaction Threshold Exceeded")
+            
+        tx_copy = dict(tx)
+        tx_copy["is_suspicious"] = is_suspicious
+        tx_copy["risk_reasons"] = reasons
+        processed.append(tx_copy)
+    return processed
+
+
+@router.get("/transactions/trace/{account_id}")
+async def get_transaction_trace(
+    account_id: str,
+    startDate: Optional[str] = None,
+    endDate: Optional[str] = None,
+    minAmount: Optional[float] = None,
+    maxAmount: Optional[float] = None,
+):
+    """
+    Returns full transaction trace flow (Sender -> Receiver with Names, Banks, Amounts, Timestamps)
+    for a specific account, including total incoming/outgoing amounts and fraud flags.
+    """
+    cypher = """
+    MATCH (a:Account {accountId: $accountId})
+    OPTIONAL MATCH (src:Account)-[in_t:TRANSFER|TRANSFERRED_TO]->(a)
+    OPTIONAL MATCH (a)-[out_t:TRANSFER|TRANSFERRED_TO]->(dst:Account)
+    RETURN a.accountId AS account_id,
+           coalesce(a.name, 'Account ' + a.accountId) AS account_name,
+           coalesce(a.bank, 'State Bank of India') AS account_bank,
+           collect(DISTINCT {
+             transaction_id: coalesce(in_t.txId, in_t.id, 'tx-in'),
+             from_account: src.accountId,
+             from_name: coalesce(src.name, 'Account ' + src.accountId),
+             from_bank: coalesce(src.bank, 'HDFC Bank'),
+             to_account: a.accountId,
+             to_name: coalesce(a.name, 'Account ' + a.accountId),
+             to_bank: coalesce(a.bank, 'State Bank of India'),
+             amount: in_t.amount,
+             timestamp: in_t.timestamp
+           }) AS incoming,
+           collect(DISTINCT {
+             transaction_id: coalesce(out_t.txId, out_t.id, 'tx-out'),
+             to_account: dst.accountId,
+             to_name: coalesce(dst.name, 'Account ' + dst.accountId),
+             to_bank: coalesce(dst.bank, 'ICICI Bank'),
+             from_account: a.accountId,
+             from_name: coalesce(a.name, 'Account ' + a.accountId),
+             from_bank: coalesce(a.bank, 'State Bank of India'),
+             amount: out_t.amount,
+             timestamp: out_t.timestamp
+           }) AS outgoing
+    """
+    res = None
+    try:
+        res = neo4j_conn.run(cypher, {"accountId": account_id})
+    except Exception as e:
+        logger.warning(f"Trace Cypher lookup exception: {e}")
+
+    if not res or not res[0] or not res[0].get("account_id"):
+        mem_trace = memory_store.get_transaction_trace(account_id)
+        incoming_clean = [t for t in mem_trace["incoming_transactions"] if t.get("amount") is not None]
+        outgoing_clean = [t for t in mem_trace["outgoing_transactions"] if t.get("amount") is not None]
+        return {
+            "account": mem_trace["account"],
+            "incoming_transactions": _evaluate_suspicious_flags(incoming_clean),
+            "outgoing_transactions": _evaluate_suspicious_flags(outgoing_clean),
+            "total_incoming": mem_trace["total_incoming"],
+            "total_outgoing": mem_trace["total_outgoing"]
+        }
+
+    data = res[0]
+    raw_incoming = [t for t in data.get("incoming", []) if t.get("from_account") and t.get("amount") is not None]
+    raw_outgoing = [t for t in data.get("outgoing", []) if t.get("to_account") and t.get("amount") is not None]
+
+    def _filter_txs(tx_list):
+        filtered = []
+        for t in tx_list:
+            amt = float(t.get("amount", 0.0) or 0.0)
+            ts = str(t.get("timestamp") or "")
+            if minAmount is not None and amt < minAmount:
+                continue
+            if maxAmount is not None and amt > maxAmount:
+                continue
+            if startDate and ts < startDate:
+                continue
+            if endDate and ts > endDate:
+                continue
+            filtered.append(t)
+        return filtered
+
+    incoming_filtered = _filter_txs(raw_incoming)
+    outgoing_filtered = _filter_txs(raw_outgoing)
+
+    total_in = sum(float(t.get("amount", 0.0) or 0.0) for t in incoming_filtered)
+    total_out = sum(float(t.get("amount", 0.0) or 0.0) for t in outgoing_filtered)
+
+    return {
+        "account": {
+            "id": data["account_id"],
+            "name": data["account_name"],
+            "bank": data["account_bank"]
+        },
+        "incoming_transactions": _evaluate_suspicious_flags(incoming_filtered),
+        "outgoing_transactions": _evaluate_suspicious_flags(outgoing_filtered),
+        "total_incoming": round(total_in, 2),
+        "total_outgoing": round(total_out, 2)
+    }
+
+
+@router.get("/transactions/trace")
+async def search_transaction_trace(
+    account_id: Optional[str] = None,
+    name: Optional[str] = None,
+    bank: Optional[str] = None,
+    startDate: Optional[str] = None,
+    endDate: Optional[str] = None,
+    limit: int = 200
+):
+    """
+    Queries and filters transactions across all accounts by Account ID, Name, Bank, or Date Range.
+    """
+    cypher = """
+    MATCH (s:Account)-[t:TRANSFER|TRANSFERRED_TO]->(r:Account)
+    RETURN t.txId AS transaction_id,
+           s.accountId AS from_account,
+           coalesce(s.name, 'Account ' + s.accountId) AS from_name,
+           coalesce(s.bank, 'State Bank of India') AS from_bank,
+           r.accountId AS to_account,
+           coalesce(r.name, 'Account ' + r.accountId) AS to_name,
+           coalesce(r.bank, 'HDFC Bank') AS to_bank,
+           t.amount AS amount,
+           t.timestamp AS timestamp
+    ORDER BY t.timestamp DESC
+    LIMIT $limit
+    """
+    res = None
+    try:
+        res = neo4j_conn.run(cypher, {"limit": limit})
+    except Exception as e:
+        logger.warning(f"Search Trace Cypher exception: {e}")
+
+    if not res:
+        res = []
+        for tx in memory_store.get_transactions(limit):
+            s_id = str(tx.get("sender") or "")
+            r_id = str(tx.get("receiver") or "")
+            s_meta = memory_store.derive_account_meta(s_id, tx.get("sender_name"), tx.get("sender_bank"))
+            r_meta = memory_store.derive_account_meta(r_id, tx.get("receiver_name"), tx.get("receiver_bank"))
+            res.append({
+                "transaction_id": str(tx.get("id") or tx.get("txId") or ""),
+                "from_account": s_id,
+                "from_name": s_meta["name"],
+                "from_bank": s_meta["bank"],
+                "to_account": r_id,
+                "to_name": r_meta["name"],
+                "to_bank": r_meta["bank"],
+                "amount": float(tx.get("amount", 0.0) or 0.0),
+                "timestamp": str(tx.get("timestamp") or "")
+            })
+
+    filtered_txs = []
+    tot_in = 0.0
+    tot_out = 0.0
+
+    for t in res:
+        f_acc = str(t.get("from_account") or "").lower()
+        t_acc = str(t.get("to_account") or "").lower()
+        f_name = str(t.get("from_name") or "").lower()
+        t_name = str(t.get("to_name") or "").lower()
+        f_bank = str(t.get("from_bank") or "").lower()
+        t_bank = str(t.get("to_bank") or "").lower()
+        ts = str(t.get("timestamp") or "")
+        amt = float(t.get("amount", 0.0) or 0.0)
+
+        if account_id and (account_id.lower() not in f_acc and account_id.lower() not in t_acc):
+            continue
+        if name and (name.lower() not in f_name and name.lower() not in t_name):
+            continue
+        if bank and (bank.lower() not in f_bank and bank.lower() not in t_bank):
+            continue
+        if startDate and ts < startDate:
+            continue
+        if endDate and ts > endDate:
+            continue
+
+        filtered_txs.append(t)
+        if account_id and account_id.lower() in t_acc:
+            tot_in += amt
+        if account_id and account_id.lower() in f_acc:
+            tot_out += amt
+
+    evaluated_txs = _evaluate_suspicious_flags(filtered_txs)
+    total_volume = sum(float(t.get("amount", 0.0) or 0.0) for t in evaluated_txs)
+    suspicious_count = sum(1 for t in evaluated_txs if t.get("is_suspicious"))
+
+    return {
+        "transactions": evaluated_txs,
+        "total_count": len(evaluated_txs),
+        "total_volume": round(total_volume, 2),
+        "total_incoming": round(tot_in, 2) if account_id else round(total_volume / 2, 2),
+        "total_outgoing": round(tot_out, 2) if account_id else round(total_volume / 2, 2),
+        "suspicious_count": suspicious_count
+    }
+
+
 @router.post("/auth/login")
 async def login(req: LoginRequest):
     """Authenticates user and returns JWT token."""

@@ -18,19 +18,19 @@ def seed_database() -> dict:
     cypher_seed = """
     // 1. Create Accounts
     UNWIND [
-      {id: 'ACC0001', name: 'Alice Smith'},
-      {id: 'ACC0002', name: 'Bob Jones'},
-      {id: 'ACC0003', name: 'Charlie Brown'},
-      {id: 'ACC0004', name: 'Diana Prince'},
-      {id: 'ACC0005', name: 'Evan Wright'},
-      {id: 'SMURF001', name: 'Smurf Mule 1'},
-      {id: 'SMURF002', name: 'Smurf Mule 2'},
-      {id: 'SMURF003', name: 'Smurf Mule 3'},
-      {id: 'SHELL01', name: 'Offshore Holding Ltd'},
-      {id: 'CIRCULAR_HUB', name: 'Apex Transfers Inc'}
+      {id: 'ACC0001', name: 'Alice Smith', bank: 'HDFC Bank'},
+      {id: 'ACC0002', name: 'Bob Jones', bank: 'SBI'},
+      {id: 'ACC0003', name: 'Charlie Brown', bank: 'ICICI Bank'},
+      {id: 'ACC0004', name: 'Diana Prince', bank: 'Axis Bank'},
+      {id: 'ACC0005', name: 'Evan Wright', bank: 'Kotak Bank'},
+      {id: 'SMURF001', name: 'Smurf Mule 1', bank: 'Global Offshore Bank'},
+      {id: 'SMURF002', name: 'Smurf Mule 2', bank: 'Global Offshore Bank'},
+      {id: 'SMURF003', name: 'Smurf Mule 3', bank: 'Global Offshore Bank'},
+      {id: 'SHELL01', name: 'Offshore Holding Ltd', bank: 'Cayman Reserve Bank'},
+      {id: 'CIRCULAR_HUB', name: 'Apex Transfers Inc', bank: 'HSBC Bank'}
     ] AS acc
     MERGE (a:Account {accountId: acc.id})
-    ON CREATE SET a.name = acc.name, a.createdAt = datetime()
+    SET a.name = acc.name, a.bank = acc.bank, a.createdAt = coalesce(a.createdAt, datetime())
 
     WITH count(a) AS accountCount
 

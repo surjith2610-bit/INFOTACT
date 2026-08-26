@@ -28,24 +28,116 @@ class InMemoryStore:
     def get_transactions(self, limit: int = 100) -> list[dict]:
         return self.transactions[:limit]
 
+    @staticmethod
+    def derive_account_meta(acc_id: str, name: str = None, bank: str = None) -> dict:
+        if not acc_id:
+            return {"id": "", "name": "Unknown", "bank": "Unknown Bank"}
+        
+        known_meta = {
+            "ACC0001": {"name": "Alice Smith", "bank": "HDFC Bank"},
+            "ACC0002": {"name": "Bob Jones", "bank": "State Bank of India"},
+            "ACC0003": {"name": "Charlie Brown", "bank": "ICICI Bank"},
+            "ACC0004": {"name": "Diana Prince", "bank": "Axis Bank"},
+            "ACC0005": {"name": "Evan Wright", "bank": "Kotak Mahindra Bank"},
+            "SMURF001": {"name": "Smurf Mule 1", "bank": "Global Offshore Bank"},
+            "SMURF002": {"name": "Smurf Mule 2", "bank": "Global Offshore Bank"},
+            "SMURF003": {"name": "Smurf Mule 3", "bank": "Global Offshore Bank"},
+            "SHELL01": {"name": "Offshore Holding Ltd", "bank": "Cayman Reserve Bank"},
+            "CIRCULAR_HUB": {"name": "Apex Transfers Inc", "bank": "HSBC Bank"},
+        }
+        
+        if acc_id in known_meta:
+            meta = known_meta[acc_id]
+            return {
+                "id": acc_id,
+                "name": name or meta["name"],
+                "bank": bank or meta["bank"]
+            }
+
+        banks = ["HDFC Bank", "State Bank of India", "ICICI Bank", "Axis Bank", "Kotak Mahindra Bank", "HSBC Bank", "Punjab National Bank"]
+        bank_idx = abs(hash(acc_id)) % len(banks)
+        default_name = f"Account {acc_id}" if not name else name
+        default_bank = banks[bank_idx] if not bank else bank
+        
+        return {
+            "id": acc_id,
+            "name": default_name,
+            "bank": default_bank
+        }
+
     def get_accounts(self, limit: int = 100) -> list[dict]:
         accounts_map = {}
         for tx in self.transactions:
             s = tx.get("sender")
             r = tx.get("receiver")
-            amt = tx.get("amount", 0.0)
             if s:
                 if s not in accounts_map:
-                    accounts_map[s] = {"id": s, "outbound_count": 0, "inbound_count": 0, "risk_score": 0.0}
+                    meta = self.derive_account_meta(s, tx.get("sender_name"), tx.get("sender_bank"))
+                    accounts_map[s] = {"id": s, "name": meta["name"], "bank": meta["bank"], "outbound_count": 0, "inbound_count": 0, "risk_score": 0.0}
                 accounts_map[s]["outbound_count"] += 1
             if r:
                 if r not in accounts_map:
-                    accounts_map[r] = {"id": r, "outbound_count": 0, "inbound_count": 0, "risk_score": 0.0}
+                    meta = self.derive_account_meta(r, tx.get("receiver_name"), tx.get("receiver_bank"))
+                    accounts_map[r] = {"id": r, "name": meta["name"], "bank": meta["bank"], "outbound_count": 0, "inbound_count": 0, "risk_score": 0.0}
                 accounts_map[r]["inbound_count"] += 1
 
         acc_list = list(accounts_map.values())
         acc_list.sort(key=lambda x: x["inbound_count"] + x["outbound_count"], reverse=True)
         return acc_list[:limit]
+
+    def get_transaction_trace(self, account_id: str) -> dict:
+        acc_meta = self.derive_account_meta(account_id)
+        incoming = []
+        outgoing = []
+        tot_in = 0.0
+        tot_out = 0.0
+
+        for tx in self.transactions:
+            tx_id = str(tx.get("id") or tx.get("txId") or "")
+            s_id = str(tx.get("sender") or "")
+            r_id = str(tx.get("receiver") or "")
+            amt = float(tx.get("amount", 0.0))
+            ts = str(tx.get("timestamp") or "")
+
+            s_meta = self.derive_account_meta(s_id, tx.get("sender_name"), tx.get("sender_bank"))
+            r_meta = self.derive_account_meta(r_id, tx.get("receiver_name"), tx.get("receiver_bank"))
+
+            if r_id == account_id:
+                tot_in += amt
+                incoming.append({
+                    "transaction_id": tx_id,
+                    "from_account": s_id,
+                    "from_name": s_meta["name"],
+                    "from_bank": s_meta["bank"],
+                    "to_account": r_id,
+                    "to_name": acc_meta["name"],
+                    "to_bank": acc_meta["bank"],
+                    "amount": amt,
+                    "timestamp": ts,
+                    "is_suspicious": amt >= 9000 and amt < 10000,
+                })
+            elif s_id == account_id:
+                tot_out += amt
+                outgoing.append({
+                    "transaction_id": tx_id,
+                    "to_account": r_id,
+                    "to_name": r_meta["name"],
+                    "to_bank": r_meta["bank"],
+                    "from_account": s_id,
+                    "from_name": acc_meta["name"],
+                    "from_bank": acc_meta["bank"],
+                    "amount": amt,
+                    "timestamp": ts,
+                    "is_suspicious": amt >= 9000 and amt < 10000,
+                })
+
+        return {
+            "account": acc_meta,
+            "incoming_transactions": incoming,
+            "outgoing_transactions": outgoing,
+            "total_incoming": round(tot_in, 2),
+            "total_outgoing": round(tot_out, 2)
+        }
 
     def get_graph_data(self, limit: int = 300) -> dict:
         nodes = {}
@@ -58,13 +150,16 @@ class InMemoryStore:
             amt = float(tx.get("amount", 0.0))
             tx_id = str(tx.get("id") or tx.get("txId") or "")
 
+            s_meta = self.derive_account_meta(s, tx.get("sender_name"), tx.get("sender_bank"))
+            r_meta = self.derive_account_meta(r, tx.get("receiver_name"), tx.get("receiver_bank"))
+
             if s:
-                nodes[s] = {"id": s, "risk": 0.0}
+                nodes[s] = {"id": s, "name": s_meta["name"], "bank": s_meta["bank"], "risk": 0.0}
             if r:
-                nodes[r] = {"id": r, "risk": 0.0}
+                nodes[r] = {"id": r, "name": r_meta["name"], "bank": r_meta["bank"], "risk": 0.0}
 
             if s and r:
-                links.append({"source": s, "target": r, "amount": amt, "txId": tx_id})
+                links.append({"source": s, "target": r, "amount": amt, "txId": tx_id, "timestamp": tx.get("timestamp")})
 
         return {"nodes": list(nodes.values()), "links": links}
 
