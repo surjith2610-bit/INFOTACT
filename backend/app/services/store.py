@@ -133,6 +133,8 @@ class InMemoryStore:
 
         return {
             "account": acc_meta,
+            "incoming": incoming,
+            "outgoing": outgoing,
             "incoming_transactions": incoming,
             "outgoing_transactions": outgoing,
             "total_incoming": round(tot_in, 2),

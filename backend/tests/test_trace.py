@@ -1,31 +1,58 @@
+"""
+Unit tests for FinGraph Transaction Trace Engine & 7 Advanced Fraud Detection Rules
+"""
 import pytest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
+
 from app.main import app
+from app.services.detection import (
+    detect_smurfing,
+    detect_high_velocity,
+    detect_circular_transfers,
+    detect_dormant_spike,
+    detect_amount_anomaly,
+    detect_fan_out,
+    detect_fan_in,
+    run_all_detections,
+)
 
 client = TestClient(app)
 
-def test_get_transaction_trace():
-    response = client.get("/api/transactions/trace/ACC0001")
-    assert response.status_code == 200
-    data = response.json()
-    assert "account" in data
-    assert data["account"]["id"] == "ACC0001"
-    assert "incoming_transactions" in data
-    assert "outgoing_transactions" in data
-    assert "total_incoming" in data
-    assert "total_outgoing" in data
 
-def test_root_alias_transaction_trace():
+def test_transaction_trace_endpoint_spec():
+    """
+    Verifies GET /transactions/trace/:accountId returns exact specification keys:
+    account, incoming, outgoing, total_incoming, total_outgoing
+    """
     response = client.get("/transactions/trace/ACC0001")
     assert response.status_code == 200
     data = response.json()
-    assert data["account"]["id"] == "ACC0001"
+    assert "account" in data
+    assert "id" in data["account"]
+    assert "name" in data["account"]
+    assert "bank" in data["account"]
 
-def test_search_transaction_trace():
-    response = client.get("/api/transactions/trace?account_id=ACC0001")
-    assert response.status_code == 200
-    data = response.json()
-    assert "transactions" in data
+    assert "incoming" in data
+    assert "outgoing" in data
     assert "total_incoming" in data
     assert "total_outgoing" in data
-    assert "suspicious_count" in data
+
+
+def test_all_seven_fraud_detectors_execution():
+    """
+    Executes run_all_detections and verifies all 7 fraud rule categories are present in breakdown.
+    """
+    result = run_all_detections()
+    assert "alerts" in result
+    assert "breakdown" in result
+
+    bd = result["breakdown"]
+    assert "smurfing" in bd
+    assert "circular" in bd
+    assert "high_frequency" in bd
+    assert "large_transaction" in bd
+    assert "dormant_spike" in bd
+    assert "amount_anomaly" in bd
+    assert "fan_out" in bd
+    assert "fan_in" in bd

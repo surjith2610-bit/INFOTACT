@@ -298,13 +298,13 @@ def _evaluate_suspicious_flags(txs: list) -> list:
     sender_ts_map = {}
     for tx in txs:
         amt = float(tx.get("amount", 0.0) or 0.0)
-        sender = tx.get("from_account") or tx.get("sender_account") or tx.get("sender") or ""
-        receiver = tx.get("to_account") or tx.get("receiver_account") or tx.get("receiver") or ""
+        sender_id = tx.get("from_account") or tx.get("sender_account") or tx.get("sender") or ""
+        receiver_id = tx.get("to_account") or tx.get("receiver_account") or tx.get("receiver") or ""
         
         is_smurfing = 9000 <= amt < 10000
         is_large = amt >= 10000
         
-        key = f"{sender}->{receiver}"
+        key = f"{sender_id}->{receiver_id}"
         if key not in sender_ts_map:
             sender_ts_map[key] = 0
         sender_ts_map[key] += 1
@@ -323,6 +323,20 @@ def _evaluate_suspicious_flags(txs: list) -> list:
         tx_copy = dict(tx)
         tx_copy["is_suspicious"] = is_suspicious
         tx_copy["risk_reasons"] = reasons
+        
+        # Attach nested sender/receiver dicts matching core specification
+        if "sender" not in tx_copy or isinstance(tx_copy["sender"], str):
+            tx_copy["sender"] = {
+                "id": sender_id,
+                "name": tx.get("from_name", f"Account {sender_id}"),
+                "bank": tx.get("from_bank", "HDFC Bank"),
+            }
+        if "receiver" not in tx_copy or isinstance(tx_copy["receiver"], str):
+            tx_copy["receiver"] = {
+                "id": receiver_id,
+                "name": tx.get("to_name", f"Account {receiver_id}"),
+                "bank": tx.get("to_bank", "State Bank of India"),
+            }
         processed.append(tx_copy)
     return processed
 
@@ -377,12 +391,16 @@ async def get_transaction_trace(
 
     if not res or not res[0] or not res[0].get("account_id"):
         mem_trace = memory_store.get_transaction_trace(account_id)
-        incoming_clean = [t for t in mem_trace["incoming_transactions"] if t.get("amount") is not None]
-        outgoing_clean = [t for t in mem_trace["outgoing_transactions"] if t.get("amount") is not None]
+        incoming_clean = [t for t in mem_trace.get("incoming", mem_trace.get("incoming_transactions", [])) if t.get("amount") is not None]
+        outgoing_clean = [t for t in mem_trace.get("outgoing", mem_trace.get("outgoing_transactions", [])) if t.get("amount") is not None]
+        inc_eval = _evaluate_suspicious_flags(incoming_clean)
+        out_eval = _evaluate_suspicious_flags(outgoing_clean)
         return {
             "account": mem_trace["account"],
-            "incoming_transactions": _evaluate_suspicious_flags(incoming_clean),
-            "outgoing_transactions": _evaluate_suspicious_flags(outgoing_clean),
+            "incoming": inc_eval,
+            "outgoing": out_eval,
+            "incoming_transactions": inc_eval,
+            "outgoing_transactions": out_eval,
             "total_incoming": mem_trace["total_incoming"],
             "total_outgoing": mem_trace["total_outgoing"]
         }
@@ -413,14 +431,19 @@ async def get_transaction_trace(
     total_in = sum(float(t.get("amount", 0.0) or 0.0) for t in incoming_filtered)
     total_out = sum(float(t.get("amount", 0.0) or 0.0) for t in outgoing_filtered)
 
+    inc_eval = _evaluate_suspicious_flags(incoming_filtered)
+    out_eval = _evaluate_suspicious_flags(outgoing_filtered)
+
     return {
         "account": {
             "id": data["account_id"],
             "name": data["account_name"],
             "bank": data["account_bank"]
         },
-        "incoming_transactions": _evaluate_suspicious_flags(incoming_filtered),
-        "outgoing_transactions": _evaluate_suspicious_flags(outgoing_filtered),
+        "incoming": inc_eval,
+        "outgoing": out_eval,
+        "incoming_transactions": inc_eval,
+        "outgoing_transactions": out_eval,
         "total_incoming": round(total_in, 2),
         "total_outgoing": round(total_out, 2)
     }

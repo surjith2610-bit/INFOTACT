@@ -325,6 +325,9 @@ def detect_high_frequency(
     return alerts
 
 
+detect_high_velocity = detect_high_frequency
+
+
 def detect_large_transaction(
     threshold: float = settings.LARGE_TRANSACTION_THRESHOLD,
 ) -> list[dict]:
@@ -530,8 +533,278 @@ def _detect_large_transaction_memory() -> list[dict]:
     return alerts
 
 
+def detect_dormant_spike(dormant_days: int = 30, amount_threshold: float = 100000.0) -> list[dict]:
+    """
+    Dormant Account Activity Detection:
+    Flags accounts inactive for > 30 days that suddenly execute large transfers > ₹100,000.
+    """
+    cypher = """
+    MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
+    WHERE t.amount >= $amountThreshold
+    OPTIONAL MATCH (s)-[prev:TRANSFERRED_TO|TRANSFER]->()
+    WHERE prev.timestamp < t.timestamp
+    WITH s, r, t, max(prev.timestamp) AS lastTxTime
+    WHERE lastTxTime IS NULL OR duration.between(datetime(lastTxTime), datetime(t.timestamp)).day >= $dormantDays
+    RETURN t.txId AS txId, s.accountId AS sender, r.accountId AS receiver, t.amount AS amount, t.timestamp AS timestamp
+    LIMIT 25
+    """
+    rows = neo4j_conn.run(cypher, {"amountThreshold": amount_threshold, "dormantDays": dormant_days})
+    if not rows:
+        return _detect_dormant_spike_memory(amount_threshold)
+
+    alerts = []
+    for row in rows:
+        tx_id = row["txId"] or str(uuid.uuid4())
+        sender = row["sender"]
+        receiver = row["receiver"]
+        amount = row["amount"]
+
+        desc = f"Dormant account reactivation: Account {sender} executed ₹{amount:,.2f} transfer to {receiver} after > 30 days inactivity."
+        alert_dict = create_fraud_alert(
+            alert_type="DORMANT_SPIKE",
+            severity="CRITICAL",
+            description=desc,
+            account_ids=[sender, receiver],
+            transaction_ids=[tx_id],
+            alert_id=f"DORMANT-{sender[:6]}-{tx_id[:6]}",
+        )
+        alerts.append(alert_dict)
+    return alerts
+
+
+def _detect_dormant_spike_memory(amount_threshold: float = 100000.0) -> list[dict]:
+    from app.services.store import memory_store
+    txs = memory_store.get_transactions(500)
+    alerts = []
+    for tx in txs:
+        amt = float(tx.get("amount", 0.0))
+        if amt >= amount_threshold:
+            s = tx.get("sender", "ACC_DORMANT")
+            r = tx.get("receiver", "ACC_DEST")
+            tx_id = tx.get("id") or tx.get("txId") or str(uuid.uuid4())
+            desc = f"Dormant account spike: Sudden large transfer of ₹{amt:,.2f} from {s} to {r} after inactivity."
+            alert = create_fraud_alert(
+                alert_type="DORMANT_SPIKE",
+                severity="CRITICAL",
+                description=desc,
+                account_ids=[s, r],
+                transaction_ids=[tx_id],
+                alert_id=f"DORMANT-{s[:6]}-{tx_id[:6]}",
+            )
+            alerts.append(alert)
+    return alerts
+
+
+def detect_amount_anomaly(multiplier: float = 5.0) -> list[dict]:
+    """
+    Unusual Amount Anomaly Detection:
+    Flags transactions where current amount > 5x sender's historical average.
+    """
+    cypher = """
+    MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
+    MATCH (s)-[all_t:TRANSFERRED_TO|TRANSFER]->()
+    WITH s, r, t, avg(all_t.amount) AS avgAmount
+    WHERE t.amount > (avgAmount * $multiplier) AND t.amount > 10000
+    RETURN t.txId AS txId, s.accountId AS sender, r.accountId AS receiver, t.amount AS amount, avgAmount
+    LIMIT 25
+    """
+    rows = neo4j_conn.run(cypher, {"multiplier": multiplier})
+    if not rows:
+        return _detect_amount_anomaly_memory(multiplier)
+
+    alerts = []
+    for row in rows:
+        tx_id = row["txId"] or str(uuid.uuid4())
+        sender = row["sender"]
+        receiver = row["receiver"]
+        amount = row["amount"]
+        avg_amt = row["avgAmount"]
+
+        desc = f"Unusual amount anomaly: Transfer of ₹{amount:,.2f} from {sender} exceeds 5x historical average (₹{avg_amt:,.2f})."
+        alert_dict = create_fraud_alert(
+            alert_type="AMOUNT_ANOMALY",
+            severity="HIGH",
+            description=desc,
+            account_ids=[sender, receiver],
+            transaction_ids=[tx_id],
+            alert_id=f"ANOMALY-{sender[:6]}-{tx_id[:6]}",
+        )
+        alerts.append(alert_dict)
+    return alerts
+
+
+def _detect_amount_anomaly_memory(multiplier: float = 5.0) -> list[dict]:
+    from app.services.store import memory_store
+    txs = memory_store.get_transactions(500)
+    alerts = []
+    sender_amounts = {}
+    for tx in txs:
+        s = tx.get("sender")
+        amt = float(tx.get("amount", 0.0))
+        if s:
+            if s not in sender_amounts:
+                sender_amounts[s] = []
+            sender_amounts[s].append(amt)
+
+    for tx in txs:
+        s = tx.get("sender")
+        r = tx.get("receiver")
+        amt = float(tx.get("amount", 0.0))
+        if s and len(sender_amounts.get(s, [])) >= 2:
+            avg_amt = sum(sender_amounts[s]) / len(sender_amounts[s])
+            if avg_amt > 0 and amt > (avg_amt * multiplier):
+                tx_id = tx.get("id") or tx.get("txId") or str(uuid.uuid4())
+                desc = f"Unusual amount anomaly: Transfer of ₹{amt:,.2f} from {s} to {r} exceeds 5x historical average (₹{avg_amt:,.2f})."
+                alert = create_fraud_alert(
+                    alert_type="AMOUNT_ANOMALY",
+                    severity="HIGH",
+                    description=desc,
+                    account_ids=[s, r],
+                    transaction_ids=[tx_id],
+                    alert_id=f"ANOMALY-{s[:6]}-{tx_id[:6]}",
+                )
+                alerts.append(alert)
+    return alerts
+
+
+def detect_fan_out(receiver_threshold: int = 10) -> list[dict]:
+    """
+    Fan-Out Pattern Detection (One to Many):
+    Flags sender accounts transferring funds to > 10 unique receivers within 1 hour window.
+    """
+    cypher = """
+    MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
+    WITH s, collect(DISTINCT r.accountId) AS receivers, collect(t.txId) AS txIds
+    WHERE size(receivers) >= $receiverThreshold
+    RETURN s.accountId AS sender, receivers, txIds, size(receivers) AS receiverCount
+    LIMIT 25
+    """
+    rows = neo4j_conn.run(cypher, {"receiverThreshold": receiver_threshold})
+    if not rows:
+        return _detect_fan_out_memory(receiver_threshold)
+
+    alerts = []
+    for row in rows:
+        sender = row["sender"]
+        receivers = row["receivers"]
+        tx_ids = [t for t in row["txIds"] if t]
+        rec_count = row["receiverCount"]
+
+        desc = f"Fan-Out distribution pattern: Account {sender} distributed funds to {rec_count} unique receiver accounts within short window."
+        alert_dict = create_fraud_alert(
+            alert_type="DISTRIBUTION_PATTERN",
+            severity="HIGH",
+            description=desc,
+            account_ids=[sender] + receivers[:10],
+            transaction_ids=tx_ids,
+            alert_id=f"FANOUT-{sender[:6]}-{rec_count}",
+        )
+        alerts.append(alert_dict)
+    return alerts
+
+
+def _detect_fan_out_memory(receiver_threshold: int = 10) -> list[dict]:
+    from app.services.store import memory_store
+    txs = memory_store.get_transactions(500)
+    senders = {}
+    for tx in txs:
+        s = tx.get("sender")
+        r = tx.get("receiver")
+        t_id = tx.get("id") or tx.get("txId")
+        if s and r:
+            if s not in senders:
+                senders[s] = {"receivers": set(), "txs": []}
+            senders[s]["receivers"].add(r)
+            if t_id:
+                senders[s]["txs"].append(t_id)
+
+    alerts = []
+    for s_id, data in senders.items():
+        recs = list(data["receivers"])
+        if len(recs) >= receiver_threshold:
+            desc = f"Fan-Out distribution pattern: Account {s_id} distributed funds to {len(recs)} unique receiver accounts within short window."
+            alert = create_fraud_alert(
+                alert_type="DISTRIBUTION_PATTERN",
+                severity="HIGH",
+                description=desc,
+                account_ids=[s_id] + recs[:10],
+                transaction_ids=data["txs"],
+                alert_id=f"FANOUT-{s_id[:6]}-{len(recs)}",
+            )
+            alerts.append(alert)
+    return alerts
+
+
+def detect_fan_in(sender_threshold: int = 10) -> list[dict]:
+    """
+    Fan-In Pattern Detection (Many to One):
+    Flags receiver accounts accepting transfers from > 10 unique senders within 1 hour window.
+    """
+    cypher = """
+    MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
+    WITH r, collect(DISTINCT s.accountId) AS senders, collect(t.txId) AS txIds
+    WHERE size(senders) >= $senderThreshold
+    RETURN r.accountId AS receiver, senders, txIds, size(senders) AS senderCount
+    LIMIT 25
+    """
+    rows = neo4j_conn.run(cypher, {"senderThreshold": sender_threshold})
+    if not rows:
+        return _detect_fan_in_memory(sender_threshold)
+
+    alerts = []
+    for row in rows:
+        receiver = row["receiver"]
+        senders = row["senders"]
+        tx_ids = [t for t in row["txIds"] if t]
+        snd_count = row["senderCount"]
+
+        desc = f"Fan-In collection account pattern: Account {receiver} gathered transfers from {snd_count} unique sender accounts."
+        alert_dict = create_fraud_alert(
+            alert_type="COLLECTION_ACCOUNT",
+            severity="HIGH",
+            description=desc,
+            account_ids=[receiver] + senders[:10],
+            transaction_ids=tx_ids,
+            alert_id=f"FANIN-{receiver[:6]}-{snd_count}",
+        )
+        alerts.append(alert_dict)
+    return alerts
+
+
+def _detect_fan_in_memory(sender_threshold: int = 10) -> list[dict]:
+    from app.services.store import memory_store
+    txs = memory_store.get_transactions(500)
+    receivers = {}
+    for tx in txs:
+        s = tx.get("sender")
+        r = tx.get("receiver")
+        t_id = tx.get("id") or tx.get("txId")
+        if s and r:
+            if r not in receivers:
+                receivers[r] = {"senders": set(), "txs": []}
+            receivers[r]["senders"].add(s)
+            if t_id:
+                receivers[r]["txs"].append(t_id)
+
+    alerts = []
+    for r_id, data in receivers.items():
+        snds = list(data["senders"])
+        if len(snds) >= sender_threshold:
+            desc = f"Fan-In collection account pattern: Account {r_id} gathered transfers from {len(snds)} unique sender accounts."
+            alert = create_fraud_alert(
+                alert_type="COLLECTION_ACCOUNT",
+                severity="HIGH",
+                description=desc,
+                account_ids=[r_id] + snds[:10],
+                transaction_ids=data["txs"],
+                alert_id=f"FANIN-{r_id[:6]}-{len(snds)}",
+            )
+            alerts.append(alert)
+    return alerts
+
+
 def run_all_detections() -> dict:
-    """Executes all modular detection rules and returns unified alerts."""
+    """Executes all 7 modular detection rules and returns unified alerts."""
     from app.services.store import memory_store
 
     gds_res = run_gds_algorithms()
@@ -539,8 +812,21 @@ def run_all_detections() -> dict:
     circular_alerts = detect_circular_transfers()
     freq_alerts = detect_high_frequency()
     large_alerts = detect_large_transaction()
+    dormant_alerts = detect_dormant_spike()
+    anomaly_alerts = detect_amount_anomaly()
+    fan_out_alerts = detect_fan_out()
+    fan_in_alerts = detect_fan_in()
 
-    all_alerts = smurfing_alerts + circular_alerts + freq_alerts + large_alerts
+    all_alerts = (
+        smurfing_alerts
+        + circular_alerts
+        + freq_alerts
+        + large_alerts
+        + dormant_alerts
+        + anomaly_alerts
+        + fan_out_alerts
+        + fan_in_alerts
+    )
 
     # Deduplicate alerts by alert_id
     unique_alerts = {}
@@ -558,6 +844,10 @@ def run_all_detections() -> dict:
             "circular": len(circular_alerts),
             "high_frequency": len(freq_alerts),
             "large_transaction": len(large_alerts),
+            "dormant_spike": len(dormant_alerts),
+            "amount_anomaly": len(anomaly_alerts),
+            "fan_out": len(fan_out_alerts),
+            "fan_in": len(fan_in_alerts),
         },
     }
 

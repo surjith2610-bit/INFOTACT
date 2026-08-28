@@ -649,41 +649,56 @@ export default function Dashboard() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className={`border-b text-slate-400 ${isDark ? "border-slate-800 bg-slate-900/90" : "border-slate-200 bg-slate-100"}`}>
-                    <th className="p-3.5">Transaction ID</th>
-                    <th className="p-3.5">Sender Account</th>
-                    <th className="p-3.5">Receiver Account</th>
+                    <th className="p-3.5">From</th>
+                    <th className="p-3.5">To</th>
+                    <th className="p-3.5">Bank</th>
                     <th className="p-3.5">Amount (₹)</th>
-                    <th className="p-3.5">Timestamp</th>
+                    <th className="p-3.5">Time</th>
+                    <th className="p-3.5 text-center">Flag</th>
                     <th className="p-3.5 text-right">Inspect</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {filteredTransactions.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-400 italic">
+                      <td colSpan={7} className="p-8 text-center text-slate-400 italic">
                         No transactions ingested yet. Run synthetic stream generator or upload a CSV file.
                       </td>
                     </tr>
                   ) : (
-                    filteredTransactions.map((tx) => (
-                      <tr key={tx.id || tx.txId} className="hover:bg-slate-900/50 transition">
-                        <td className="p-3.5 font-bold text-teal-400">{tx.id || tx.txId}</td>
-                        <td className="p-3.5 font-semibold text-slate-200">{tx.sender}</td>
-                        <td className="p-3.5 font-semibold text-slate-200">{tx.receiver}</td>
-                        <td className={`p-3.5 font-bold ${Number(tx.amount) >= 10000 ? "text-red-400" : "text-emerald-400"}`}>
-                          ₹{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="p-3.5 text-slate-400">{new Date(tx.timestamp).toLocaleTimeString()}</td>
-                        <td className="p-3.5 text-right">
-                          <button
-                            onClick={() => handleGraphNodeClick(tx.sender)}
-                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700"
-                          >
-                            Inspect Node
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    filteredTransactions.map((tx) => {
+                      const amount = Number(tx.amount || 0);
+                      const isSuspicious = tx.is_suspicious || amount >= 50000;
+                      const flagType = tx.flag || tx.risk_type || (amount >= 100000 ? "LARGE_AMOUNT" : amount >= 50000 ? "SUSPICIOUS" : "NORMAL");
+                      const bankName = tx.sender_bank || tx.from_bank || tx.bank || "HDFC Bank";
+
+                      return (
+                        <tr key={tx.id || tx.txId} className="hover:bg-slate-900/50 transition">
+                          <td className="p-3.5 font-semibold text-slate-200">{tx.sender || tx.from_account || "N/A"}</td>
+                          <td className="p-3.5 font-semibold text-slate-200">{tx.receiver || tx.to_account || "N/A"}</td>
+                          <td className="p-3.5 text-slate-300 font-mono text-[11px]">{bankName}</td>
+                          <td className={`p-3.5 font-bold ${amount >= 50000 ? "text-red-400" : "text-emerald-400"}`}>
+                            ₹{amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-slate-400">{new Date(tx.timestamp || Date.now()).toLocaleTimeString()}</td>
+                          <td className="p-3.5 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                              isSuspicious ? "bg-red-500/20 text-red-400 border border-red-500/40" : "bg-emerald-500/10 text-emerald-400"
+                            }`}>
+                              {flagType}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <button
+                              onClick={() => handleGraphNodeClick(tx.sender || tx.from_account)}
+                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 font-mono text-[11px]"
+                            >
+                              Trace 🔍
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
