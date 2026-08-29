@@ -858,13 +858,25 @@ def get_graph_sample(limit: int = 300) -> dict:
 
     cypher = """
     MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
-    RETURN s.accountId AS source, r.accountId AS target,
-           t.amount AS amount, t.txId AS txId,
+    RETURN coalesce(s.id, s.accountId) AS source,
+           coalesce(s.name, 'Account ' + coalesce(s.id, s.accountId)) AS sourceName,
+           coalesce(s.bank, 'Unknown Bank') AS sourceBank,
+           coalesce(r.id, r.accountId) AS target,
+           coalesce(r.name, 'Account ' + coalesce(r.id, r.accountId)) AS targetName,
+           coalesce(r.bank, 'Unknown Bank') AS targetBank,
+           t.amount AS amount,
+           t.timestamp AS timestamp,
+           coalesce(t.transactionId, t.txId) AS txId,
            coalesce(s.riskScore, 0.0) AS sourceRisk,
            coalesce(r.riskScore, 0.0) AS targetRisk
     LIMIT $limit
     """
-    rows = neo4j_conn.run(cypher, {"limit": limit})
+    rows = None
+    try:
+        rows = neo4j_conn.run(cypher, {"limit": limit})
+    except Exception as e:
+        logger.warning(f"get_graph_sample Cypher exception: {e}")
+
     if not rows:
         return memory_store.get_graph_data(limit)
 
@@ -874,10 +886,25 @@ def get_graph_sample(limit: int = 300) -> dict:
     for row in rows:
         source_id = str(row["source"])
         target_id = str(row["target"])
-        tx_id = str(row.get("txId", ""))
+        source_name = str(row["sourceName"])
+        source_bank = str(row["sourceBank"])
+        target_name = str(row["targetName"])
+        target_bank = str(row["targetBank"])
+        tx_id = str(row.get("txId") or "")
+        timestamp = str(row.get("timestamp") or "")
 
-        nodes[source_id] = {"id": source_id, "risk": float(row["sourceRisk"])}
-        nodes[target_id] = {"id": target_id, "risk": float(row["targetRisk"])}
+        nodes[source_id] = {
+            "id": source_id,
+            "name": source_name,
+            "bank": source_bank,
+            "risk": float(row["sourceRisk"])
+        }
+        nodes[target_id] = {
+            "id": target_id,
+            "name": target_name,
+            "bank": target_bank,
+            "risk": float(row["targetRisk"])
+        }
 
         link_key = (source_id, target_id, tx_id) if tx_id else (source_id, target_id)
         if link_key not in seen_tx_ids:
@@ -888,6 +915,8 @@ def get_graph_sample(limit: int = 300) -> dict:
                     "target": target_id,
                     "amount": float(row["amount"]),
                     "txId": tx_id,
+                    "transactionId": tx_id,
+                    "timestamp": timestamp,
                 }
             )
     return {"nodes": list(nodes.values()), "links": links}

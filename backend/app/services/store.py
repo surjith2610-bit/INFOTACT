@@ -34,6 +34,8 @@ class InMemoryStore:
             return {"id": "", "name": "Unknown", "bank": "Unknown Bank"}
         
         known_meta = {
+            "A101": {"name": "Ravi Kumar", "bank": "SBI"},
+            "A202": {"name": "Priya Sharma", "bank": "ICICI"},
             "ACC0001": {"name": "Alice Smith", "bank": "HDFC Bank"},
             "ACC0002": {"name": "Bob Jones", "bank": "State Bank of India"},
             "ACC0003": {"name": "Charlie Brown", "bank": "ICICI Bank"},
@@ -141,6 +143,35 @@ class InMemoryStore:
             "total_outgoing": round(tot_out, 2)
         }
 
+    def get_full_trace(self, account_id: str) -> dict:
+        results = []
+        for tx in self.transactions:
+            s_id = str(tx.get("sender") or "")
+            r_id = str(tx.get("receiver") or "")
+            if s_id == account_id or r_id == account_id:
+                s_meta = self.derive_account_meta(s_id, tx.get("sender_name"), tx.get("sender_bank"))
+                r_meta = self.derive_account_meta(r_id, tx.get("receiver_name"), tx.get("receiver_bank"))
+                amt = float(tx.get("amount", 0.0))
+                ts = str(tx.get("timestamp") or "")
+                tx_id = str(tx.get("id") or tx.get("txId") or tx.get("transactionId") or "")
+
+                results.append({
+                    "sender": {
+                        "id": s_meta["id"],
+                        "name": s_meta["name"],
+                        "bank": s_meta["bank"],
+                    },
+                    "receiver": {
+                        "id": r_meta["id"],
+                        "name": r_meta["name"],
+                        "bank": r_meta["bank"],
+                    },
+                    "amount": amt,
+                    "timestamp": ts,
+                    "transactionId": tx_id
+                })
+        return {"transactions": results}
+
     def get_graph_data(self, limit: int = 300) -> dict:
         nodes = {}
         links = []
@@ -215,6 +246,15 @@ class InMemoryStore:
             "receiver": "OFFSHORE_PRIV_88",
             "amount": 75000.00,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # Plant A101 -> A202 transaction
+        sample_rows.append({
+            "id": "TXN001",
+            "sender": "A101",
+            "receiver": "A202",
+            "amount": 5000.00,
+            "timestamp": "2026-08-25T10:30:00",
         })
 
         self.add_transactions_bulk(sample_rows)

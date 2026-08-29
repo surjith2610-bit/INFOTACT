@@ -44,7 +44,16 @@ app.include_router(api_router)
 app.include_router(legacy_data_router)
 app.include_router(legacy_graph_router)
 
-from app.routes.api import get_transaction_trace as api_get_transaction_trace, search_transaction_trace as api_search_transaction_trace
+from app.routes.api import (
+    get_transaction_trace as api_get_transaction_trace,
+    search_transaction_trace as api_search_transaction_trace,
+    get_full_transaction_trace as api_get_full_transaction_trace,
+)
+
+@app.get("/transactions/full-trace/{account_id}")
+async def root_full_transaction_trace_alias(account_id: str):
+    """Direct root path alias matching specification GET /transactions/full-trace/:accountId"""
+    return await api_get_full_transaction_trace(account_id)
 
 @app.get("/transactions/trace/{account_id}")
 async def root_transaction_trace_alias(account_id: str):

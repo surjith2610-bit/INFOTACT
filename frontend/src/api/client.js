@@ -45,6 +45,8 @@ export const fetchAccounts = (limit = 100) => api.get("/api/accounts", { params:
 export const fetchTransactions = (limit = 100) => api.get("/api/transactions", { params: { limit } });
 export const fetchTransactionTrace = (accountId, params = {}) =>
   api.get(`/api/transactions/trace/${accountId}`, { params });
+export const fetchFullTrace = (accountId) =>
+  api.get(`/api/transactions/full-trace/${accountId}`);
 export const searchTransactionsTrace = (params = {}) =>
   api.get("/api/transactions/trace", { params });
 

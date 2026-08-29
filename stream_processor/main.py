@@ -121,19 +121,24 @@ def process_transaction(tx: dict, driver):
     MERGE (sb:Bank {bankId: $senderBank})
     MERGE (rb:Bank {bankId: $receiverBank})
 
-    MERGE (s:Account {accountId: $sender})
-    MERGE (r:Account {accountId: $receiver})
+    MERGE (s:Account {id: $sender})
+    ON CREATE SET s.accountId = $sender, s.name = $senderPerson, s.bank = $senderBank
+    ON MATCH SET s.accountId = coalesce(s.accountId, $sender), s.name = coalesce(s.name, $senderPerson), s.bank = coalesce(s.bank, $senderBank)
+
+    MERGE (r:Account {id: $receiver})
+    ON CREATE SET r.accountId = $receiver, r.name = $receiverPerson, r.bank = $receiverBank
+    ON MATCH SET r.accountId = coalesce(r.accountId, $receiver), r.name = coalesce(r.name, $receiverPerson), r.bank = coalesce(r.bank, $receiverBank)
 
     MERGE (sp)-[:OWNS]->(s)
     MERGE (rp)-[:OWNS]->(r)
     MERGE (s)-[:HELD_AT]->(sb)
     MERGE (r)-[:HELD_AT]->(rb)
 
-    MERGE (s)-[t:TRANSFERRED_TO {txId: $txId}]->(r)
-    ON CREATE SET t.amount = $amount, t.timestamp = $timestamp
+    MERGE (s)-[t:TRANSFERRED_TO {transactionId: $txId}]->(r)
+    ON CREATE SET t.amount = $amount, t.timestamp = $timestamp, t.txId = $txId
 
     MERGE (s)-[t_legacy:TRANSFER {txId: $txId}]->(r)
-    ON CREATE SET t_legacy.amount = $amount, t_legacy.timestamp = $timestamp
+    ON CREATE SET t_legacy.amount = $amount, t_legacy.timestamp = $timestamp, t_legacy.transactionId = $txId
     """
     params = {
         "sender": sender,

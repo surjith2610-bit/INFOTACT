@@ -69,13 +69,12 @@ export default function NetworkGraph({
   // Color mapping based on risk score (0 - 100)
   const getNodeColor = useCallback((node) => {
     if (selectedNodeId === node.id) return "#38BDF8"; // Bright Cyan highlight
-    if (flaggedIds.has(node.id)) return "#EF4444"; // Crimson Red
+    if (flaggedIds.has(node.id)) return "#EF4444"; // Red -> Fraud
     
     const risk = node.risk !== undefined ? (node.risk > 1 ? node.risk : node.risk * 100) : 0;
-    if (risk >= 70) return "#EF4444"; // Red
-    if (risk >= 40) return "#F59E0B"; // Amber
-    if (risk >= 20) return "#10B981"; // Emerald
-    return "#14B8A6"; // Teal
+    if (risk >= 70) return "#EF4444"; // Red -> Fraud
+    if (risk >= 30) return "#F59E0B"; // Yellow -> Suspicious
+    return "#10B981"; // Green -> Normal
   }, [flaggedIds, selectedNodeId]);
 
   // Size node proportional to volume/degree
@@ -199,11 +198,13 @@ export default function NetworkGraph({
         nodeLabel={(n) => {
           const m = nodeMetrics[n.id] || {};
           const riskVal = n.risk !== undefined ? (n.risk > 1 ? n.risk : n.risk * 100).toFixed(1) : "0.0";
+          const displayName = n.name ? `${n.name} (${n.bank || "Bank"})` : n.id;
           return `
             <div style="background: rgba(15,23,42,0.95); border: 1px solid rgba(51,65,85,0.8); padding: 8px 12px; border-radius: 6px; font-family: monospace; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-              <div style="font-weight: bold; color: #38BDF8; font-size: 13px;">${n.id}</div>
-              <div style="color: ${riskVal > 60 ? '#EF4444' : riskVal > 30 ? '#F59E0B' : '#10B981'}; font-weight: 600; margin-top: 2px;">
-                Risk Score: ${riskVal} / 100
+              <div style="font-weight: bold; color: #38BDF8; font-size: 13px;">${displayName}</div>
+              <div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">Account ID: ${n.id}</div>
+              <div style="color: ${riskVal >= 70 ? '#EF4444' : riskVal >= 30 ? '#F59E0B' : '#10B981'}; font-weight: 600; margin-top: 2px;">
+                Risk Status: ${riskVal >= 70 ? 'RED (Fraud)' : riskVal >= 30 ? 'YELLOW (Suspicious)' : 'GREEN (Normal)'} (${riskVal}/100)
               </div>
               <div style="font-size: 11px; color: #94A3B8; margin-top: 4px;">
                 Inbound: ${m.inDegree || 0} | Outbound: ${m.outDegree || 0}
@@ -214,11 +215,45 @@ export default function NetworkGraph({
             </div>
           `;
         }}
+        canvasObject={(node, ctx, globalScale) => {
+          const nameStr = node.name ? `${node.name} (${node.bank || "Bank"})` : node.id;
+          const label = nameStr;
+          const fontSize = 12 / globalScale;
+          ctx.font = `${fontSize}px Sans-Serif`;
+
+          const risk = node.risk !== undefined ? (node.risk > 1 ? node.risk : node.risk * 100) : 0;
+          const color = flaggedIds.has(node.id) || risk >= 70 ? "#EF4444" : risk >= 30 ? "#F59E0B" : "#10B981";
+
+          const r = selectedNodeId === node.id ? 8 : 5;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
+          ctx.fillStyle = color;
+          ctx.fill();
+
+          if (selectedNodeId === node.id) {
+            ctx.strokeStyle = "#38BDF8";
+            ctx.lineWidth = 2.5 / globalScale;
+            ctx.stroke();
+          }
+
+          if (globalScale > 1.1 || selectedNodeId === node.id || flaggedIds.has(node.id)) {
+            ctx.fillStyle = "#e2e8f0";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillText(label, node.x, node.y + r + 2);
+          }
+        }}
+        linkLabel={(l) => {
+          const amt = Number(l.amount) || 0;
+          const ts = l.timestamp ? new Date(l.timestamp).toLocaleString() : "N/A";
+          const flag = amt >= 100000 ? "🚨 LARGE FRAUD RISK" : amt >= 9000 ? "⚠️ SUSPICIOUS SMURFING" : "✓ Normal";
+          return `Amount: ₹${amt.toLocaleString()} | Time: ${ts} | Status: ${flag}`;
+        }}
         linkColor={(l) => {
           const amt = Number(l.amount) || 0;
-          if (amt >= 10000) return "rgba(239, 68, 68, 0.6)"; // Red line for large transactions
-          if (amt >= 5000) return "rgba(245, 158, 11, 0.5)"; // Amber line
-          return "rgba(51, 65, 85, 0.4)"; // Slate default
+          if (amt >= 10000) return "rgba(239, 68, 68, 0.7)"; // Red line for large/fraud transactions
+          if (amt >= 5000) return "rgba(245, 158, 11, 0.6)"; // Amber line for suspicious
+          return "rgba(51, 65, 85, 0.4)"; // Slate default for normal
         }}
         linkWidth={(l) => Math.max(1, Math.min(5, (Number(l.amount) || 1000) / 2500))}
         linkDirectionalArrowLength={4}

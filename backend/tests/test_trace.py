@@ -39,6 +39,30 @@ def test_transaction_trace_endpoint_spec():
     assert "total_outgoing" in data
 
 
+def test_full_trace_endpoint_spec():
+    """
+    Verifies GET /transactions/full-trace/:accountId returns exact specification keys:
+    transactions: [{ sender: {id, name, bank}, receiver: {id, name, bank}, amount, timestamp, transactionId }]
+    """
+    response = client.get("/transactions/full-trace/A101")
+    assert response.status_code == 200
+    data = response.json()
+    assert "transactions" in data
+    assert len(data["transactions"]) > 0
+    tx = data["transactions"][0]
+    assert "sender" in tx
+    assert "id" in tx["sender"]
+    assert "name" in tx["sender"]
+    assert "bank" in tx["sender"]
+    assert "receiver" in tx
+    assert "id" in tx["receiver"]
+    assert "name" in tx["receiver"]
+    assert "bank" in tx["receiver"]
+    assert "amount" in tx
+    assert "timestamp" in tx
+    assert "transactionId" in tx
+
+
 def test_all_seven_fraud_detectors_execution():
     """
     Executes run_all_detections and verifies all 7 fraud rule categories are present in breakdown.

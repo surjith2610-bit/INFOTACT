@@ -649,13 +649,13 @@ export default function Dashboard() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className={`border-b text-slate-400 ${isDark ? "border-slate-800 bg-slate-900/90" : "border-slate-200 bg-slate-100"}`}>
-                    <th className="p-3.5">From</th>
-                    <th className="p-3.5">To</th>
-                    <th className="p-3.5">Bank</th>
+                    <th className="p-3.5">Sender Name</th>
+                    <th className="p-3.5">Sender Bank</th>
+                    <th className="p-3.5">Receiver Name</th>
+                    <th className="p-3.5">Receiver Bank</th>
                     <th className="p-3.5">Amount (₹)</th>
                     <th className="p-3.5">Time</th>
-                    <th className="p-3.5 text-center">Flag</th>
-                    <th className="p-3.5 text-right">Inspect</th>
+                    <th className="p-3.5 text-center">Fraud Flag</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -669,32 +669,75 @@ export default function Dashboard() {
                     filteredTransactions.map((tx) => {
                       const amount = Number(tx.amount || 0);
                       const isSuspicious = tx.is_suspicious || amount >= 50000;
-                      const flagType = tx.flag || tx.risk_type || (amount >= 100000 ? "LARGE_AMOUNT" : amount >= 50000 ? "SUSPICIOUS" : "NORMAL");
-                      const bankName = tx.sender_bank || tx.from_bank || tx.bank || "HDFC Bank";
+                      const flagType = tx.flag || tx.risk_type || (amount >= 100000 ? "LARGE_AMOUNT" : amount >= 9000 && amount < 10000 ? "SMURFING" : amount >= 50000 ? "SUSPICIOUS" : "NORMAL");
+
+                      const senderId = typeof tx.sender === "object" ? tx.sender.id : (tx.sender || tx.from_account || "N/A");
+                      const senderName = typeof tx.sender === "object" ? tx.sender.name : (tx.sender_name || tx.from_name || senderId);
+                      const senderBank = typeof tx.sender === "object" ? tx.sender.bank : (tx.sender_bank || tx.from_bank || "HDFC Bank");
+
+                      const receiverId = typeof tx.receiver === "object" ? tx.receiver.id : (tx.receiver || tx.to_account || "N/A");
+                      const receiverName = typeof tx.receiver === "object" ? tx.receiver.name : (tx.receiver_name || tx.to_name || receiverId);
+                      const receiverBank = typeof tx.receiver === "object" ? tx.receiver.bank : (tx.receiver_bank || tx.to_bank || "ICICI Bank");
 
                       return (
-                        <tr key={tx.id || tx.txId} className="hover:bg-slate-900/50 transition">
-                          <td className="p-3.5 font-semibold text-slate-200">{tx.sender || tx.from_account || "N/A"}</td>
-                          <td className="p-3.5 font-semibold text-slate-200">{tx.receiver || tx.to_account || "N/A"}</td>
-                          <td className="p-3.5 text-slate-300 font-mono text-[11px]">{bankName}</td>
-                          <td className={`p-3.5 font-bold ${amount >= 50000 ? "text-red-400" : "text-emerald-400"}`}>
+                        <tr
+                          key={tx.id || tx.txId || tx.transactionId || Math.random()}
+                          onClick={() => {
+                            setActiveTab("analytics");
+                            handleGraphNodeClick(senderId);
+                          }}
+                          className={`cursor-pointer transition-colors ${
+                            isSuspicious
+                              ? "bg-rose-950/30 hover:bg-rose-900/50 text-rose-100"
+                              : "hover:bg-slate-900/50 text-slate-200"
+                          }`}
+                          title={`Click to open graph topology view for ${senderName} (${senderId})`}
+                        >
+                          {/* Sender Name with Account ID Tooltip */}
+                          <td className="p-3.5 font-semibold text-slate-200" title={`Sender Account ID: ${senderId}`}>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-white font-bold">{senderName}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">({senderId})</div>
+                          </td>
+
+                          {/* Sender Bank with Tooltip */}
+                          <td className="p-3.5 text-slate-300 font-mono text-[11px]" title={`Sender Account ID: ${senderId}`}>
+                            <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">{senderBank}</span>
+                          </td>
+
+                          {/* Receiver Name with Account ID Tooltip */}
+                          <td className="p-3.5 font-semibold text-slate-200" title={`Receiver Account ID: ${receiverId}`}>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-white font-bold">{receiverName}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">({receiverId})</div>
+                          </td>
+
+                          {/* Receiver Bank with Tooltip */}
+                          <td className="p-3.5 text-slate-300 font-mono text-[11px]" title={`Receiver Account ID: ${receiverId}`}>
+                            <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">{receiverBank}</span>
+                          </td>
+
+                          {/* Amount */}
+                          <td className={`p-3.5 font-bold font-mono ${amount >= 50000 ? "text-red-400" : "text-emerald-400"}`}>
                             ₹{amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                           </td>
-                          <td className="p-3.5 text-slate-400">{new Date(tx.timestamp || Date.now()).toLocaleTimeString()}</td>
-                          <td className="p-3.5 text-center">
-                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
-                              isSuspicious ? "bg-red-500/20 text-red-400 border border-red-500/40" : "bg-emerald-500/10 text-emerald-400"
-                            }`}>
-                              {flagType}
-                            </span>
+
+                          {/* Time */}
+                          <td className="p-3.5 text-slate-400 whitespace-nowrap">
+                            {new Date(tx.timestamp || Date.now()).toLocaleTimeString()}
                           </td>
-                          <td className="p-3.5 text-right">
-                            <button
-                              onClick={() => handleGraphNodeClick(tx.sender || tx.from_account)}
-                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 font-mono text-[11px]"
-                            >
-                              Trace 🔍
-                            </button>
+
+                          {/* Fraud Flag */}
+                          <td className="p-3.5 text-center whitespace-nowrap">
+                            <span className={`px-2.5 py-1 rounded text-[10px] uppercase font-bold border ${
+                              isSuspicious
+                                ? "bg-red-500/20 text-red-400 border-red-500/40 animate-pulse"
+                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            }`}>
+                              {isSuspicious ? `🚨 ${flagType}` : "✓ Normal"}
+                            </span>
                           </td>
                         </tr>
                       );

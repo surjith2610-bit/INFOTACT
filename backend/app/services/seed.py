@@ -18,6 +18,8 @@ def seed_database() -> dict:
     cypher_seed = """
     // 1. Create Accounts
     UNWIND [
+      {id: 'A101', name: 'Ravi Kumar', bank: 'SBI'},
+      {id: 'A202', name: 'Priya Sharma', bank: 'ICICI'},
       {id: 'ACC0001', name: 'Alice Smith', bank: 'HDFC Bank'},
       {id: 'ACC0002', name: 'Bob Jones', bank: 'SBI'},
       {id: 'ACC0003', name: 'Charlie Brown', bank: 'ICICI Bank'},
@@ -29,17 +31,17 @@ def seed_database() -> dict:
       {id: 'SHELL01', name: 'Offshore Holding Ltd', bank: 'Cayman Reserve Bank'},
       {id: 'CIRCULAR_HUB', name: 'Apex Transfers Inc', bank: 'HSBC Bank'}
     ] AS acc
-    MERGE (a:Account {accountId: acc.id})
-    SET a.name = acc.name, a.bank = acc.bank, a.createdAt = coalesce(a.createdAt, datetime())
+    MERGE (a:Account {id: acc.id})
+    SET a.accountId = acc.id, a.name = acc.name, a.bank = acc.bank, a.createdAt = coalesce(a.createdAt, datetime())
 
     WITH count(a) AS accountCount
 
     // 2. Create Shared IP for Smurf Mules
     MERGE (ip:IP {address: '185.220.101.7'})
     WITH accountCount, ip
-    MATCH (s1:Account {accountId: 'SMURF001'})
-    MATCH (s2:Account {accountId: 'SMURF002'})
-    MATCH (s3:Account {accountId: 'SMURF003'})
+    MATCH (s1:Account) WHERE s1.id = 'SMURF001' OR s1.accountId = 'SMURF001'
+    MATCH (s2:Account) WHERE s2.id = 'SMURF002' OR s2.accountId = 'SMURF002'
+    MATCH (s3:Account) WHERE s3.id = 'SMURF003' OR s3.accountId = 'SMURF003'
     MERGE (s1)-[:USED_IP]->(ip)
     MERGE (s2)-[:USED_IP]->(ip)
     MERGE (s3)-[:USED_IP]->(ip)
@@ -48,6 +50,7 @@ def seed_database() -> dict:
 
     // 3. Create Transactions
     UNWIND [
+      {txId: 'TXN001', sender: 'A101', receiver: 'A202', amount: 5000.00, ts: '2026-08-25T10:30:00'},
       {txId: 'tx001', sender: 'ACC0001', receiver: 'ACC0002', amount: 1200.50, ts: '2026-08-01T09:15:00Z'},
       {txId: 'tx002', sender: 'ACC0002', receiver: 'ACC0003', amount: 340.00, ts: '2026-08-01T09:20:00Z'},
       {txId: 'tx003', sender: 'ACC0003', receiver: 'ACC0004', amount: 890.00, ts: '2026-08-01T09:22:00Z'},
@@ -62,10 +65,12 @@ def seed_database() -> dict:
       {txId: 'tx012', sender: 'SHELL01', receiver: 'ACC0004', amount: 35000.00, ts: '2026-08-01T12:00:00Z'},
       {txId: 'tx013', sender: 'ACC0003', receiver: 'CIRCULAR_HUB', amount: 12000.00, ts: '2026-08-01T12:15:00Z'}
     ] AS tx
-    MATCH (s:Account {accountId: tx.sender})
-    MATCH (r:Account {accountId: tx.receiver})
-    MERGE (s)-[t:TRANSFER {txId: tx.txId}]->(r)
-    ON CREATE SET t.amount = tx.amount, t.timestamp = tx.ts
+    MATCH (s:Account) WHERE s.id = tx.sender OR s.accountId = tx.sender
+    MATCH (r:Account) WHERE r.id = tx.receiver OR r.accountId = tx.receiver
+    MERGE (s)-[t:TRANSFERRED_TO {transactionId: tx.txId}]->(r)
+    ON CREATE SET t.amount = tx.amount, t.timestamp = tx.ts, t.txId = tx.txId
+    MERGE (s)-[t2:TRANSFER {txId: tx.txId}]->(r)
+    ON CREATE SET t2.amount = tx.amount, t2.timestamp = tx.ts, t2.transactionId = tx.txId
 
     WITH accountCount, count(t) AS txCount
 
@@ -100,7 +105,7 @@ def seed_database() -> dict:
                   fa.createdAt = datetime()
     WITH accountCount, txCount, fa, alt
     UNWIND alt.accs AS targetAcc
-    MATCH (target:Account {accountId: targetAcc})
+    MATCH (target:Account) WHERE target.id = targetAcc OR target.accountId = targetAcc
     MERGE (fa)-[:INVOLVES]->(target)
 
     RETURN accountCount, txCount, count(DISTINCT fa) AS alertCount

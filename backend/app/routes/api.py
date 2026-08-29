@@ -153,10 +153,22 @@ def _load_dataframe_to_graph(df: pd.DataFrame) -> int:
         sender_ip = str(row.get("sender_ip", "")).strip() or None
         receiver_ip = str(row.get("receiver_ip", "")).strip() or None
 
+        sender_name = str(row.get("sender_name", "")).strip()
+        sender_bank = str(row.get("sender_bank", "")).strip()
+        receiver_name = str(row.get("receiver_name", "")).strip()
+        receiver_bank = str(row.get("receiver_bank", "")).strip()
+
+        s_meta = memory_store.derive_account_meta(sender, sender_name or None, sender_bank or None)
+        r_meta = memory_store.derive_account_meta(receiver, receiver_name or None, receiver_bank or None)
+
         params = {
             "txId": tx_id,
             "sender": sender,
+            "senderName": s_meta["name"],
+            "senderBank": s_meta["bank"],
             "receiver": receiver,
+            "receiverName": r_meta["name"],
+            "receiverBank": r_meta["bank"],
             "amount": amount,
             "timestamp": timestamp,
             "senderIp": sender_ip,
@@ -165,10 +177,20 @@ def _load_dataframe_to_graph(df: pd.DataFrame) -> int:
 
         # 1. Update Neo4j graph
         cypher = """
-        MERGE (s:Account {accountId: $sender})
-        MERGE (r:Account {accountId: $receiver})
-        MERGE (s)-[t:TRANSFER {txId: $txId}]->(r)
-        ON CREATE SET t.amount = $amount, t.timestamp = $timestamp
+        MERGE (s:Account {id: $sender})
+        ON CREATE SET s.accountId = $sender, s.name = $senderName, s.bank = $senderBank
+        ON MATCH SET s.accountId = coalesce(s.accountId, $sender), s.name = coalesce(s.name, $senderName), s.bank = coalesce(s.bank, $senderBank)
+
+        MERGE (r:Account {id: $receiver})
+        ON CREATE SET r.accountId = $receiver, r.name = $receiverName, r.bank = $receiverBank
+        ON MATCH SET r.accountId = coalesce(r.accountId, $receiver), r.name = coalesce(r.name, $receiverName), r.bank = coalesce(r.bank, $receiverBank)
+
+        MERGE (s)-[t:TRANSFERRED_TO {transactionId: $txId}]->(r)
+        ON CREATE SET t.amount = $amount, t.timestamp = $timestamp, t.txId = $txId
+
+        MERGE (s)-[t_legacy:TRANSFER {txId: $txId}]->(r)
+        ON CREATE SET t_legacy.amount = $amount, t_legacy.timestamp = $timestamp, t_legacy.transactionId = $txId
+
         FOREACH (_ IN CASE WHEN $senderIp IS NOT NULL THEN [1] ELSE [] END |
             MERGE (ip1:IP {address: $senderIp}) MERGE (s)-[:USED_IP]->(ip1))
         FOREACH (_ IN CASE WHEN $receiverIp IS NOT NULL THEN [1] ELSE [] END |
@@ -180,7 +202,11 @@ def _load_dataframe_to_graph(df: pd.DataFrame) -> int:
         memory_store.add_transaction({
             "id": tx_id,
             "sender": sender,
+            "sender_name": s_meta["name"],
+            "sender_bank": s_meta["bank"],
             "receiver": receiver,
+            "receiver_name": r_meta["name"],
+            "receiver_bank": r_meta["bank"],
             "amount": amount,
             "timestamp": timestamp,
             "sender_ip": sender_ip,
@@ -339,6 +365,58 @@ def _evaluate_suspicious_flags(txs: list) -> list:
             }
         processed.append(tx_copy)
     return processed
+
+
+@router.get("/transactions/full-trace/{account_id}")
+async def get_full_transaction_trace(account_id: str):
+    """
+    GET /transactions/full-trace/:accountId
+    Returns identity-level transaction traceability for all transfers connected to account_id:
+    WHO sent money -> TO WHOM -> FROM WHICH BANK -> TO WHICH BANK -> HOW MUCH -> WHEN.
+    """
+    cypher = """
+    MATCH (a:Account)-[t:TRANSFERRED_TO|TRANSFER]->(b:Account)
+    WHERE a.id = $accountId OR a.accountId = $accountId OR b.id = $accountId OR b.accountId = $accountId
+    RETURN
+      coalesce(a.id, a.accountId) AS sender_id,
+      coalesce(a.name, 'Account ' + coalesce(a.id, a.accountId)) AS sender_name,
+      coalesce(a.bank, 'Unknown Bank') AS sender_bank,
+      coalesce(b.id, b.accountId) AS receiver_id,
+      coalesce(b.name, 'Account ' + coalesce(b.id, b.accountId)) AS receiver_name,
+      coalesce(b.bank, 'Unknown Bank') AS receiver_bank,
+      t.amount AS amount,
+      t.timestamp AS timestamp,
+      coalesce(t.transactionId, t.txId) AS transactionId
+    ORDER BY t.timestamp DESC
+    """
+    res = None
+    try:
+        res = neo4j_conn.run(cypher, {"accountId": account_id})
+    except Exception as e:
+        logger.warning(f"Full trace Cypher exception: {e}")
+
+    if not res:
+        return memory_store.get_full_trace(account_id)
+
+    formatted_txs = []
+    for r in res:
+        formatted_txs.append({
+            "sender": {
+                "id": str(r.get("sender_id") or ""),
+                "name": str(r.get("sender_name") or ""),
+                "bank": str(r.get("sender_bank") or ""),
+            },
+            "receiver": {
+                "id": str(r.get("receiver_id") or ""),
+                "name": str(r.get("receiver_name") or ""),
+                "bank": str(r.get("receiver_bank") or ""),
+            },
+            "amount": float(r.get("amount", 0.0) or 0.0),
+            "timestamp": str(r.get("timestamp") or ""),
+            "transactionId": str(r.get("transactionId") or "")
+        })
+
+    return {"transactions": formatted_txs}
 
 
 @router.get("/transactions/trace/{account_id}")
