@@ -14,7 +14,7 @@ from neo4j import GraphDatabase
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("latency_verify")
 
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC_TRANSACTIONS", "fingraph-transactions")
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")

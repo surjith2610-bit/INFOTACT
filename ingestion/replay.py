@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ingestion_replay")
 
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC_TRANSACTIONS", "fingraph-transactions")
 
 
