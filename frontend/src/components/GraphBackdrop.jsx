@@ -11,26 +11,28 @@ export default function GraphBackdrop() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     let width, height;
     let raf;
 
-    const NODE_COUNT = 42;
+    const NODE_COUNT = 45;
     const nodes = [];
 
     function resize() {
-      width = canvas.width = canvas.offsetWidth * devicePixelRatio;
-      height = canvas.height = canvas.offsetHeight * devicePixelRatio;
+      if (!canvas) return;
+      width = canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
+      height = canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
     }
     resize();
     window.addEventListener("resize", resize);
 
     for (let i = 0; i < NODE_COUNT; i++) {
       nodes.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.15,
-        vy: (Math.random() - 0.5) * 0.15,
+        x: Math.random() * (width || 1200),
+        y: Math.random() * (height || 800),
+        vx: (Math.random() - 0.5) * 0.2,
+        vy: (Math.random() - 0.5) * 0.2,
         r: 1.5 + Math.random() * 1.5,
         flagged: false,
       });
@@ -41,16 +43,17 @@ export default function GraphBackdrop() {
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     function pickBurst() {
+      if (nodes.length === 0) return;
       burstTarget = nodes[Math.floor(Math.random() * nodes.length)];
       burstTarget.flagged = true;
       burstTimer = 140;
     }
-    const burstInterval = prefersReducedMotion ? null : setInterval(pickBurst, 6000);
+    const burstInterval = prefersReducedMotion ? null : setInterval(pickBurst, 7000);
 
     function tick() {
       ctx.clearRect(0, 0, width, height);
 
-      // drift
+      // Drift
       for (const n of nodes) {
         if (!prefersReducedMotion) {
           n.x += n.vx;
@@ -60,15 +63,16 @@ export default function GraphBackdrop() {
         }
       }
 
-      // edges between nearby nodes
+      // Edges between nearby nodes
+      const dpr = window.devicePixelRatio || 1;
       ctx.lineWidth = 1;
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const a = nodes[i], b = nodes[j];
           const dx = a.x - b.x, dy = a.y - b.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 160 * devicePixelRatio) {
-            ctx.strokeStyle = `rgba(45, 217, 196, ${0.06 * (1 - dist / (160 * devicePixelRatio))})`;
+          if (dist < 150 * dpr) {
+            ctx.strokeStyle = `rgba(0, 242, 254, ${0.05 * (1 - dist / (150 * dpr))})`;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
@@ -77,14 +81,14 @@ export default function GraphBackdrop() {
         }
       }
 
-      // starburst flare
+      // Starburst flare
       if (burstTarget && burstTimer > 0) {
         const alpha = burstTimer / 140;
-        ctx.strokeStyle = `rgba(255, 92, 61, ${0.5 * alpha})`;
+        ctx.strokeStyle = `rgba(255, 56, 92, ${0.4 * alpha})`;
         for (const n of nodes) {
           if (n === burstTarget) continue;
           const dx = n.x - burstTarget.x, dy = n.y - burstTarget.y;
-          if (Math.sqrt(dx * dx + dy * dy) < 260 * devicePixelRatio) {
+          if (Math.sqrt(dx * dx + dy * dy) < 240 * dpr) {
             ctx.beginPath();
             ctx.moveTo(burstTarget.x, burstTarget.y);
             ctx.lineTo(n.x, n.y);
@@ -95,11 +99,11 @@ export default function GraphBackdrop() {
         if (burstTimer <= 0) burstTarget.flagged = false;
       }
 
-      // nodes
+      // Nodes
       for (const n of nodes) {
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r * devicePixelRatio, 0, Math.PI * 2);
-        ctx.fillStyle = n.flagged ? "#FF5C3D" : "rgba(122, 135, 156, 0.55)";
+        ctx.arc(n.x, n.y, n.r * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = n.flagged ? "#FF385C" : "rgba(139, 155, 180, 0.4)";
         ctx.fill();
       }
 
@@ -117,7 +121,7 @@ export default function GraphBackdrop() {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 w-full h-full opacity-70"
+      className="absolute inset-0 w-full h-full opacity-60 pointer-events-none"
       aria-hidden="true"
     />
   );

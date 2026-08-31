@@ -39,27 +39,27 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-fade-in font-sans">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6 text-slate-100 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-obsidian/85 backdrop-blur-md p-4 animate-fade-in font-sans">
+      <div className="w-full max-w-md bg-panel border border-slate-700/80 rounded-2xl p-6 shadow-2xl space-y-6 text-slate-100 relative">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 text-sm font-mono"
+          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 text-sm font-mono hover:bg-slate-800 rounded-lg"
         >
           ✕
         </button>
 
         <div className="space-y-1">
           <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-teal-400" />
-            FinGraph Enterprise Portal
+            <span className="w-3 h-3 rounded-full bg-teal shadow-neon-teal animate-pulse" />
+            FinGraph Enterprise Command
           </h2>
           <p className="text-xs text-slate-400 font-mono">
-            {isLogin ? "Sign in to access real-time fraud intelligence" : "Register a new analyst account"}
+            {isLogin ? "Sign in to access real-time graph intelligence" : "Provision a new security analyst seat"}
           </p>
         </div>
 
         {error && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs font-mono text-red-400">
+          <div className="p-3 bg-flare/10 border border-flare/30 rounded-xl text-xs font-mono text-flare">
             {error}
           </div>
         )}
@@ -73,19 +73,19 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:outline-none focus:border-teal-500"
+                className="w-full bg-obsidian border border-slate-700/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-teal transition"
               />
             </div>
           )}
 
           <div>
-            <label className="block text-slate-400 mb-1">Email Address</label>
+            <label className="block text-slate-400 mb-1">Analyst Work Email</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:outline-none focus:border-teal-500"
+              className="w-full bg-obsidian border border-slate-700/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-teal transition"
             />
           </div>
 
@@ -96,20 +96,20 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:outline-none focus:border-teal-500"
+              className="w-full bg-obsidian border border-slate-700/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-teal transition"
             />
           </div>
 
           {!isLogin && (
             <div>
-              <label className="block text-slate-400 mb-1">Access Role</label>
+              <label className="block text-slate-400 mb-1">Assigned Security Role</label>
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:outline-none focus:border-teal-500"
+                className="w-full bg-obsidian border border-slate-700/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-teal transition"
               >
-                <option value="ANALYST">Fraud Analyst</option>
-                <option value="ADMIN">Security Administrator</option>
+                <option value="ANALYST">Fraud Compliance Analyst</option>
+                <option value="ADMIN">Lead Security Administrator</option>
               </select>
             </div>
           )}
@@ -117,17 +117,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold rounded-lg transition shadow-lg disabled:opacity-50 mt-2"
+            className="w-full py-3 bg-teal hover:bg-teal-400 text-obsidian font-bold rounded-xl transition shadow-neon-teal disabled:opacity-50 mt-2 font-mono text-xs"
           >
-            {loading ? "Processing..." : isLogin ? "Sign In" : "Register Account"}
+            {loading ? "Verifying Credentials…" : isLogin ? "Authenticate Analyst" : "Provision Account"}
           </button>
         </form>
 
-        <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs font-mono text-slate-400">
-          <span>{isLogin ? "Need an account?" : "Already have an account?"}</span>
+        <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-xs font-mono text-slate-400">
+          <span>{isLogin ? "Need new credentials?" : "Already provisioned?"}</span>
           <button
             onClick={() => setIsLogin(!isLogin)}
-            className="text-teal-400 hover:underline font-semibold"
+            className="text-teal hover:underline font-semibold"
           >
             {isLogin ? "Register" : "Sign In"}
           </button>

@@ -8,6 +8,7 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
   const [analystNotes, setAnalystNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState("");
+  const [copiedId, setCopiedId] = useState(null);
 
   useEffect(() => {
     async function loadAlert() {
@@ -20,21 +21,21 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
           setStatus(res.data.status || "PENDING");
           setAnalystNotes(res.data.analyst_notes || "");
         } else if (accountId) {
-          // Construct temporary investigation payload for standalone account
+          // Construct rich mock investigation payload for direct account selection
           setDetail({
-            id: `ACC-INV-${accountId}`,
-            type: "ACCOUNT_INVESTIGATION",
+            id: `INV-${accountId}`,
+            type: "SYNDICATE_SUSPECT",
             severity: "HIGH",
-            risk_score: 78.5,
-            fraud_probability: 0.785,
-            description: `Manual investigation initiated for account ${accountId}.`,
-            account_ids: [accountId],
-            transaction_ids: [],
+            risk_score: 84.2,
+            fraud_probability: 0.842,
+            description: `Target account ${accountId} identified with abnormal transaction velocity and cyclic fund distribution.`,
+            account_ids: [accountId, "ACC_HUB_9012", "ACC_RELAY_4410"],
+            transaction_ids: ["TX_SMURF_8819", "TX_SMURF_8820", "TX_SMURF_8821"],
             explanations: [
-              `Direct node selection for account ${accountId}.`,
-              "High transaction velocity detected over last 24h (+22 pts).",
-              "Connected counterparty hub with 6 distinct inbound transfers (+18 pts).",
-              "ML Isolation Forest anomaly score -0.68 (+24 pts).",
+              `Target account ${accountId} acts as a secondary smurfing funnel.`,
+              "High velocity: 9 inbound micro-transactions within a 15-minute window (+32 pts).",
+              "Immediate forward routing of 98.4% funds to offshore relay account (+28 pts).",
+              "ML Isolation Forest graph anomaly score: -0.74 (+24 pts).",
             ],
             status: "PENDING",
           });
@@ -66,186 +67,187 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
     }
   };
 
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(text);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   if (!alertId && !accountId) return null;
 
+  const riskScore = detail?.risk_score !== undefined
+    ? Math.round(detail.risk_score > 1 ? detail.risk_score : detail.risk_score * 100)
+    : 80;
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-sm animate-fade-in font-sans">
-      <div className="w-full max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl h-full flex flex-col overflow-hidden text-slate-100">
+    <div className="fixed inset-0 z-50 flex justify-end bg-obsidian/80 backdrop-blur-md animate-fade-in font-sans">
+      <div className="w-full max-w-xl bg-panel border-l border-slate-700/80 shadow-2xl h-full flex flex-col overflow-hidden text-slate-100">
         {/* Panel Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-obsidian/95">
           <div className="flex items-center gap-3">
-            <span className="w-3 h-3 rounded-full bg-red-500 animate-ping" />
+            <span className="w-3 h-3 rounded-full bg-flare shadow-neon-flare animate-pulse" />
             <div>
               <h2 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
                 Fraud Investigation Workbench
               </h2>
               <p className="text-xs font-mono text-slate-400">
-                Target: <span className="text-teal-400 font-semibold">{alertId || accountId}</span>
+                Target Entity: <span className="text-teal font-semibold">{alertId || accountId}</span>
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition font-mono"
+            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition font-mono text-sm border border-transparent hover:border-slate-700"
           >
             ✕ Close
           </button>
         </div>
 
-        {/* Panel Content */}
+        {/* Panel Content Body */}
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 font-mono text-sm">
-            <svg className="w-8 h-8 animate-spin text-teal-400" fill="none" viewBox="0 0 24 24">
+            <svg className="w-8 h-8 animate-spin text-teal" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
             </svg>
-            <span>Analyzing multi-hop transaction graph & AI features...</span>
+            <span>Retrieving Multi-Hop Graph Evidence…</span>
           </div>
-        ) : !detail ? (
-          <div className="flex-1 p-6 text-center text-slate-400 font-mono">
-            Could not retrieve details for target ID.
-          </div>
-        ) : (
+        ) : detail ? (
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* Risk Score & Status Badge Bar */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5 flex items-center justify-between gap-4 shadow-inner">
+            {/* Risk Assessment KPI Meter */}
+            <div className="glass-card p-5 rounded-2xl border border-slate-800 flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1">
-                  Unified AI Risk Score
+                  Synthetic Risk Threat Assessment
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-extrabold font-mono text-red-500">
-                    {detail.risk_score !== undefined ? detail.risk_score : 85.0}
+                <div className="text-2xl font-black text-white flex items-center gap-2">
+                  <span className={riskScore >= 70 ? "text-flare" : riskScore >= 40 ? "text-gold" : "text-emerald"}>
+                    {riskScore}%
                   </span>
-                  <span className="text-slate-400 text-xs font-mono">/ 100</span>
-                </div>
-                <div className="text-xs font-mono text-teal-400 mt-1">
-                  Fraud Probability: {((detail.fraud_probability || 0.85) * 100).toFixed(1)}%
-                </div>
-              </div>
-
-              <div className="text-right">
-                <span
-                  className={`inline-block px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider ${
-                    status === "CONFIRMED_FRAUD"
-                      ? "bg-red-500/20 text-red-400 border border-red-500/40"
-                      : status === "FALSE_POSITIVE"
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
-                      : "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                  }`}
-                >
-                  {status === "CONFIRMED_FRAUD"
-                    ? "🚨 Confirmed Fraud"
-                    : status === "FALSE_POSITIVE"
-                    ? "✅ False Positive"
-                    : "⏳ Pending Review"}
-                </span>
-                <div className="text-xs text-slate-400 font-mono mt-2">
-                  Severity: <span className="text-red-400 font-semibold">{detail.severity || "HIGH"}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* AI Explanation Breakdown (Explainable AI Card) */}
-            <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-5 space-y-3">
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider font-mono flex items-center gap-2">
-                <span className="text-teal-400">🤖</span> AI Feature & Risk Explanation (XAI)
-              </h3>
-              <ul className="space-y-2 font-mono text-xs text-slate-300">
-                {detail.explanations && detail.explanations.length > 0 ? (
-                  detail.explanations.map((exp, idx) => (
-                    <li key={idx} className="flex items-start gap-2.5 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/60">
-                      <span className="text-amber-400 font-bold">►</span>
-                      <span>{exp}</span>
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-slate-400 italic">{detail.description}</li>
-                )}
-              </ul>
-            </div>
-
-            {/* Involved Accounts & Counterparties */}
-            <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-5 space-y-3">
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider font-mono flex items-center gap-2">
-                <span className="text-teal-400">🌐</span> Connected Syndicate Entities ({detail.account_ids?.length || 0})
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {detail.account_ids?.map((acc) => (
-                  <span
-                    key={acc}
-                    className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-teal-300 flex items-center gap-1.5"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-teal-400" />
-                    {acc}
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-mono uppercase font-bold ${
+                    riskScore >= 70
+                      ? "bg-flare/20 text-flare border border-flare/40"
+                      : "bg-gold/20 text-gold border border-gold/40"
+                  }`}>
+                    {detail.severity || "HIGH"} SEVERITY
                   </span>
-                ))}
+                </div>
+                <div className="text-xs text-slate-400 mt-1">
+                  Pattern Type: <span className="text-teal font-mono">{detail.type || "Syndicate Smurfing"}</span>
+                </div>
+              </div>
+
+              {/* Visual Radial Gauge Badge */}
+              <div className="relative w-20 h-20 flex items-center justify-center rounded-full bg-obsidian border-2 border-slate-700">
+                <div className={`text-center font-mono ${riskScore >= 70 ? "text-flare" : "text-gold"}`}>
+                  <div className="text-lg font-black">{riskScore}</div>
+                  <div className="text-[9px] text-slate-400">SCORE</div>
+                </div>
               </div>
             </div>
 
-            {/* Transaction Chain Audit */}
-            {detail.transaction_ids && detail.transaction_ids.length > 0 && (
-              <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-5 space-y-3">
-                <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider font-mono flex items-center gap-2">
-                  <span className="text-teal-400">🔗</span> Transaction Chain IDs
+            {/* Pattern Description */}
+            <div className="glass-card p-4 rounded-xl border border-slate-800">
+              <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 mb-2">
+                Executive Pattern Summary
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                {detail.description || "Complex laundering topology involving multi-layered starburst distribution and cyclical routing."}
+              </p>
+            </div>
+
+            {/* AI Multi-Hop Graph Explanations */}
+            {detail.explanations && detail.explanations.length > 0 && (
+              <div className="glass-card p-4 rounded-xl border border-slate-800 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center gap-2">
+                  <span>🧠</span> AI Graph Engine Evidence Trace
                 </h3>
-                <div className="space-y-1.5 max-h-32 overflow-y-auto pr-2 font-mono text-xs">
-                  {detail.transaction_ids.map((txId) => (
-                    <div key={txId} className="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 flex justify-between">
-                      <span>{txId}</span>
-                      <span className="text-slate-400">Verified</span>
+                <div className="space-y-2">
+                  {detail.explanations.map((exp, idx) => (
+                    <div key={idx} className="flex items-start gap-2 text-xs text-slate-300">
+                      <span className="text-teal font-mono">▸</span>
+                      <span className="font-sans leading-snug">{exp}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Analyst Action & Feedback Workform */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-5 space-y-4">
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider font-mono flex items-center gap-2">
-                <span className="text-teal-400">📝</span> Analyst Action & Decision Log
+            {/* Connected Syndicate Accounts */}
+            {detail.account_ids && detail.account_ids.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center justify-between">
+                  <span>Involved Syndicate Nodes ({detail.account_ids.length})</span>
+                  <span className="text-[10px] text-slate-400 font-sans">Click to copy</span>
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {detail.account_ids.map((accId) => (
+                    <button
+                      key={accId}
+                      onClick={() => copyToClipboard(accId)}
+                      className="p-2.5 rounded-lg bg-obsidian border border-slate-800 text-left font-mono text-xs text-slate-300 hover:border-teal/50 hover:text-white transition flex items-center justify-between group"
+                    >
+                      <span className="truncate">{accId}</span>
+                      <span className="text-[10px] text-slate-500 group-hover:text-teal">
+                        {copiedId === accId ? "✓ Copied" : "Copy"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Analyst Disposition & Feedback Action Form */}
+            <div className="p-4 rounded-2xl bg-obsidian/90 border border-slate-800 space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center gap-2">
+                <span>⚖️</span> Compliance Analyst Disposition
               </h3>
 
               {feedbackMsg && (
-                <div
-                  className={`p-3 rounded-lg text-xs font-mono border ${
-                    feedbackMsg.includes("Failed")
-                      ? "bg-red-500/10 text-red-400 border-red-500/30"
-                      : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                  }`}
-                >
+                <div className="p-2.5 rounded-lg bg-teal/10 border border-teal/30 text-teal text-xs font-mono">
                   {feedbackMsg}
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">Analyst Notes / Investigation Summary:</label>
+              <div className="space-y-2">
+                <label className="text-[11px] font-mono text-slate-400">Analyst Investigation Notes:</label>
                 <textarea
                   value={analystNotes}
                   onChange={(e) => setAnalystNotes(e.target.value)}
-                  placeholder="Record investigation findings, SAR filing status, or false positive rationale..."
+                  placeholder="Record multi-hop findings, law enforcement referral notes, or KYC verification details…"
                   rows={3}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-200 focus:outline-none focus:border-teal-500 transition"
+                  className="w-full bg-ink border border-slate-700/80 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-teal transition"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-3 gap-2 pt-2">
                 <button
                   onClick={() => handleAction("CONFIRMED_FRAUD")}
                   disabled={submitting}
-                  className="py-2.5 px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold transition shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="px-3 py-2 rounded-xl bg-flare hover:bg-flare-600 text-white font-mono text-xs font-bold shadow-neon-flare transition disabled:opacity-50"
                 >
-                  <span>🚨</span> Confirm Fraud
+                  🚨 Confirm Fraud
                 </button>
                 <button
-                  onClick={() => handleAction("FALSE_POSITIVE")}
+                  onClick={() => handleAction("ESCALATED")}
                   disabled={submitting}
-                  className="py-2.5 px-4 rounded-lg bg-slate-800 hover:bg-emerald-700 text-slate-200 hover:text-white font-mono text-xs font-bold transition border border-slate-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="px-3 py-2 rounded-xl bg-gold hover:bg-yellow-500 text-obsidian font-mono text-xs font-bold shadow-gold transition disabled:opacity-50"
                 >
-                  <span>✅</span> False Positive
+                  ⚠️ Escalate Ring
+                </button>
+                <button
+                  onClick={() => handleAction("DISMISSED_FALSE_POSITIVE")}
+                  disabled={submitting}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs font-bold border border-slate-700 transition disabled:opacity-50"
+                >
+                  ✅ Clear Benign
                 </button>
               </div>
             </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-slate-400 font-mono text-xs">
+            Alert details not found.
           </div>
         )}
       </div>

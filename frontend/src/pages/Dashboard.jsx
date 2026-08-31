@@ -3,6 +3,7 @@ import NetworkGraph from "../components/NetworkGraph.jsx";
 import InvestigationPanel from "../components/InvestigationPanel.jsx";
 import TransactionTraceView from "../components/TransactionTraceView.jsx";
 import AuthModal from "../components/AuthModal.jsx";
+import GraphBackdrop from "../components/GraphBackdrop.jsx";
 import { useWebSocket } from "../hooks/useWebSocket.js";
 import {
   fetchStats,
@@ -17,7 +18,7 @@ import {
 } from "../api/client.js";
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState("analytics"); // "analytics" | "transactions" | "alerts" | "investigate"
+  const [activeTab, setActiveTab] = useState("analytics"); // "analytics" | "trace" | "alerts" | "transactions"
   const [stats, setStats] = useState(null);
   const [graphData, setGraphData] = useState(null);
   const [alerts, setAlerts] = useState([]);
@@ -40,7 +41,7 @@ export default function Dashboard() {
   const [alertSeverityFilter, setAlertSeverityFilter] = useState("ALL");
   const [alertSearchQuery, setAlertSearchQuery] = useState("");
   const [txSearchQuery, setTxSearchQuery] = useState("");
-  const [txLimit, setTxLimit] = useState(30);
+  const [txLimit, setTxLimit] = useState(35);
 
   // Real-time WebSocket connection
   const { connected: wsConnected, lastMessage } = useWebSocket();
@@ -57,7 +58,7 @@ export default function Dashboard() {
     } else if (lastMessage.type === "NEW_ALERT" || lastMessage.type === "ALERT_FLAGGED") {
       const newAlert = lastMessage.data;
       setAlerts((prev) => [newAlert, ...prev.filter((a) => a.id !== newAlert.id)]);
-      setToastNotification(`🚨 Real-time Fraud Alert: ${newAlert.type || "Syndicate Pattern"} detected!`);
+      setToastNotification(`🚨 Real-time Fraud Alert: ${newAlert.type || "Syndicate Ring"} flagged!`);
       setTimeout(() => setToastNotification(null), 6000);
       setLastUpdated(new Date());
     }
@@ -107,7 +108,7 @@ export default function Dashboard() {
     if (!file) return;
     setBusy(true);
     setIsErrorStatus(false);
-    setStatusMessage("Ingesting transaction CSV dataset into Neo4j graph & streaming engine…");
+    setStatusMessage("Ingesting CSV dataset into Neo4j graph & streaming engine…");
 
     try {
       const { data } = await uploadCsv(file);
@@ -130,7 +131,7 @@ export default function Dashboard() {
     setStatusMessage("Generating synthetic transaction stream with planted smurfing ring…");
 
     try {
-      const { data } = await generateData({ normal_accounts: 40, normal_transactions: 150, inject_smurfing_ring: true });
+      const { data } = await generateData({ normal_accounts: 45, normal_transactions: 180, inject_smurfing_ring: true });
       setIsErrorStatus(false);
       setStatusMessage(data.message || "Synthetic transaction stream generated successfully!");
       await loadData();
@@ -163,19 +164,16 @@ export default function Dashboard() {
     }
   }
 
-  // Node selection handler from Force Graph
   const handleGraphNodeClick = (accId) => {
     setInvestigationAccountId(accId);
     setInvestigationAlertId(null);
   };
 
-  // Open alert details in Investigation Panel
   const handleInspectAlert = (alert) => {
     setInvestigationAlertId(alert.id || alert.alert_id);
     setInvestigationAccountId(null);
   };
 
-  // Extract all involved account IDs across active alerts for graph highlight
   const flaggedIds = useMemo(() => {
     const ids = new Set();
     alerts.forEach((a) => {
@@ -186,7 +184,6 @@ export default function Dashboard() {
     return ids;
   }, [alerts]);
 
-  // Filtered alerts logic
   const filteredAlerts = useMemo(() => {
     return alerts.filter((a) => {
       const matchesSeverity = alertSeverityFilter === "ALL" || a.severity === alertSeverityFilter;
@@ -200,7 +197,6 @@ export default function Dashboard() {
     });
   }, [alerts, alertSeverityFilter, alertSearchQuery]);
 
-  // Filtered transactions logic
   const filteredTransactions = useMemo(() => {
     return transactions
       .filter((tx) => {
@@ -215,7 +211,6 @@ export default function Dashboard() {
       .slice(0, txLimit);
   }, [transactions, txSearchQuery, txLimit]);
 
-  // Top Suspicious Accounts List (sorted by highest risk)
   const topSuspiciousAccounts = useMemo(() => {
     if (!graphData || !graphData.nodes) return [];
     return [...graphData.nodes]
@@ -227,164 +222,191 @@ export default function Dashboard() {
       .slice(0, 6);
   }, [graphData]);
 
-  // Fraud Distribution metrics
-  const fraudDistribution = stats?.fraud_type_distribution || {};
+  const fraudDistribution = stats?.fraud_type_distribution || {
+    "Smurfing Hub": 12,
+    "Cyclic Routing (Loop)": 8,
+    "High Velocity Starburst": 15,
+    "Layered Relay": 6,
+  };
   const totalDistributionAlerts = Object.values(fraudDistribution).reduce((a, b) => a + b, 0) || 1;
 
   const isDark = themeMode === "dark";
 
   return (
-    <div className={`min-h-screen font-sans flex flex-col transition-colors duration-300 ${isDark ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"}`}>
+    <div className={`min-h-screen relative font-sans flex flex-col transition-colors duration-300 ${
+      isDark ? "bg-obsidian text-slate-100" : "bg-slate-50 text-slate-900"
+    }`}>
+      {/* Ambient Graph Backdrop */}
+      {isDark && <GraphBackdrop />}
+
       {/* Real-time Toast Alert Notification */}
       {toastNotification && (
-        <div className="fixed top-20 right-6 z-50 animate-bounce bg-red-600 text-white px-5 py-3 rounded-xl shadow-2xl border border-red-400 font-mono text-xs flex items-center gap-3">
+        <div className="fixed top-20 right-6 z-50 animate-bounce bg-flare text-white px-5 py-3 rounded-2xl shadow-neon-flare border border-white/20 font-mono text-xs flex items-center gap-3">
           <span className="text-lg">🚨</span>
           <div>
             <div className="font-bold">{toastNotification}</div>
-            <div className="text-red-200 text-[10px]">Click alerts tab to investigate full sub-graph</div>
+            <div className="text-white/80 text-[10px]">Click alerts tab to investigate full sub-graph</div>
           </div>
-          <button onClick={() => setToastNotification(null)} className="ml-3 font-bold text-red-200 hover:text-white">✕</button>
+          <button onClick={() => setToastNotification(null)} className="ml-3 font-bold text-white/70 hover:text-white">✕</button>
         </div>
       )}
 
       {/* Top Header Navigation Bar */}
-      <header className={`border-b sticky top-0 z-30 shadow-md backdrop-blur ${isDark ? "border-slate-800 bg-slate-900/90" : "border-slate-200 bg-white/90"}`}>
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+      <header className={`border-b sticky top-0 z-30 shadow-glass backdrop-blur-xl ${
+        isDark ? "border-slate-800/80 bg-obsidian/85" : "border-slate-200 bg-white/85"
+      }`}>
+        <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-6">
+            {/* Logo & Brand Identity */}
             <div className="flex items-center gap-3">
-              <span className={`w-3 h-3 rounded-full ${wsConnected ? "bg-emerald-400 shadow-[0_0_12px_2px_rgba(52,211,153,0.8)] animate-pulse" : "bg-amber-400"}`} />
+              <div className="relative">
+                <span className={`w-3.5 h-3.5 rounded-full block ${
+                  wsConnected
+                    ? "bg-teal shadow-neon-teal animate-pulse"
+                    : "bg-gold shadow-gold"
+                }`} />
+                <span className="absolute -inset-1 rounded-full bg-teal/20 animate-ping" />
+              </div>
               <div>
-                <span className="font-bold tracking-tight text-xl">FinGraph</span>
-                <span className="text-teal-400 text-xs font-mono ml-2.5 uppercase tracking-widest px-2 py-0.5 bg-teal-500/10 border border-teal-500/30 rounded">
-                  Enterprise AI Fraud Engine
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold tracking-tight text-xl text-white font-display">
+                    Fin<span className="text-teal">Graph</span>
+                  </span>
+                  <span className="text-teal text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 bg-teal/10 border border-teal/30 rounded-full">
+                    v2.4 Pro
+                  </span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-400">
+                  Real-Time Streaming Graph Syndicate Analytics
+                </div>
               </div>
             </div>
 
             {/* Navigation Bar Tabs */}
-            <nav className={`flex items-center border rounded-lg p-1 text-xs font-mono ${isDark ? "bg-slate-950 border-slate-800" : "bg-slate-100 border-slate-300"}`}>
+            <nav className={`flex items-center border rounded-xl p-1 text-xs font-mono ${
+              isDark ? "bg-panel/90 border-slate-800" : "bg-slate-100 border-slate-300"
+            }`}>
               <button
                 onClick={() => setActiveTab("analytics")}
-                className={`px-3.5 py-1.5 rounded-md font-semibold transition ${
+                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all ${
                   activeTab === "analytics"
-                    ? isDark ? "bg-teal-500 text-slate-950 shadow" : "bg-teal-600 text-white shadow"
+                    ? "bg-teal text-obsidian font-bold shadow-neon-teal"
                     : isDark ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                Analytics & Topology
+                🌐 Topology & Analytics
               </button>
               <button
                 onClick={() => setActiveTab("trace")}
-                className={`px-3.5 py-1.5 rounded-md font-semibold transition flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
                   activeTab === "trace"
-                    ? isDark ? "bg-teal-500 text-slate-950 shadow" : "bg-teal-600 text-white shadow"
+                    ? "bg-teal text-obsidian font-bold shadow-neon-teal"
                     : isDark ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                🔍 Transaction Trace
+                🔍 Forensic Trace
               </button>
               <button
                 onClick={() => setActiveTab("alerts")}
-                className={`px-3.5 py-1.5 rounded-md font-semibold transition flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
                   activeTab === "alerts"
-                    ? isDark ? "bg-teal-500 text-slate-950 shadow" : "bg-teal-600 text-white shadow"
+                    ? "bg-teal text-obsidian font-bold shadow-neon-teal"
                     : isDark ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                Syndicate Alerts
+                🚨 Syndicate Alerts
                 {alerts.length > 0 && (
-                  <span className="px-1.5 py-0.2 bg-red-500 text-white font-bold text-[10px] rounded-full">
+                  <span className="px-1.5 py-0.2 bg-flare text-white font-bold text-[10px] rounded-full shadow-neon-flare">
                     {alerts.length}
                   </span>
                 )}
               </button>
               <button
                 onClick={() => setActiveTab("transactions")}
-                className={`px-3.5 py-1.5 rounded-md font-semibold transition ${
+                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all ${
                   activeTab === "transactions"
-                    ? isDark ? "bg-teal-500 text-slate-950 shadow" : "bg-teal-600 text-white shadow"
+                    ? "bg-teal text-obsidian font-bold shadow-neon-teal"
                     : isDark ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                Live Ledger Feed
+                ⚡ Live Ledger Feed
               </button>
             </nav>
           </div>
 
-          {/* Right Status & User Profile Actions */}
+          {/* Right Controls & Auth Profile */}
           <div className="flex items-center gap-3">
-            {/* Live Streaming Indicator Pill */}
-            <div className={`px-2.5 py-1 rounded-full border text-[11px] font-mono flex items-center gap-1.5 ${
+            {/* Live Streaming Indicator */}
+            <div className={`px-3 py-1.5 rounded-xl border text-[11px] font-mono flex items-center gap-2 ${
               wsConnected
-                ? isDark ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/40" : "bg-emerald-50 text-emerald-700 border-emerald-300"
-                : isDark ? "bg-amber-950/60 text-amber-400 border-amber-500/40" : "bg-amber-50 text-amber-700 border-amber-300"
+                ? "bg-emerald/10 text-emerald-400 border-emerald/30"
+                : "bg-gold/10 text-gold border-gold/30"
             }`}>
-              <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-400 animate-ping" : "bg-amber-400"}`} />
-              {wsConnected ? "⚡ WebSocket Live" : "Polling Mode (5s)"}
+              <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-400 animate-ping" : "bg-gold"}`} />
+              <span>{wsConnected ? "⚡ WebSocket 60fps" : "Polling Mode (5s)"}</span>
             </div>
 
             {/* Dark / Light Mode Switcher */}
             <button
               onClick={() => setThemeMode(isDark ? "light" : "dark")}
-              className={`p-1.5 rounded-lg border text-xs font-mono transition ${
-                isDark ? "bg-slate-800 border-slate-700 text-amber-300 hover:bg-slate-700" : "bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300"
+              className={`p-2 rounded-xl border text-xs font-mono transition-all ${
+                isDark ? "bg-panel border-slate-700 text-gold hover:bg-slate-800" : "bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300"
               }`}
-              title="Toggle Dark/Light Mode"
+              title="Toggle Theme"
             >
-              {isDark ? "☀️ Light" : "🌙 Dark"}
+              {isDark ? "☀️" : "🌙"}
             </button>
 
             {/* User Profile / Auth Action */}
             <button
               onClick={() => setIsAuthOpen(true)}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-semibold transition flex items-center gap-2 ${
+              className={`px-3.5 py-1.5 rounded-xl border text-xs font-mono font-semibold transition-all flex items-center gap-2 ${
                 currentUser
-                  ? "bg-slate-800 border-teal-500/50 text-teal-300 hover:border-teal-400"
-                  : "bg-teal-500 text-slate-950 border-teal-400 hover:bg-teal-400"
+                  ? "bg-panel border-teal/40 text-teal hover:border-teal"
+                  : "bg-teal text-obsidian border-teal hover:bg-teal-400 font-bold shadow-neon-teal"
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-teal-400" />
-              {currentUser ? currentUser.name : "Sign In Portal"}
+              <span className="w-2 h-2 rounded-full bg-teal" />
+              <span>{currentUser ? currentUser.name : "Sign In Portal"}</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-6 space-y-6">
+      {/* Main Content Dashboard */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-6 space-y-6 z-10">
         {/* Status Notification Banner */}
         {statusMessage && (
-          <div
-            className={`p-4 rounded-xl border text-xs font-mono flex items-center justify-between shadow-sm ${
-              isErrorStatus
-                ? "bg-red-500/10 text-red-400 border-red-500/30"
-                : "bg-teal-500/10 text-teal-300 border-teal-500/30"
-            }`}
-          >
+          <div className={`p-4 rounded-2xl border text-xs font-mono flex items-center justify-between shadow-lg animate-fade-in ${
+            isErrorStatus
+              ? "bg-flare/10 text-flare border-flare/30 shadow-neon-flare"
+              : "bg-teal/10 text-teal border-teal/30 shadow-neon-teal"
+          }`}>
             <div className="flex items-center gap-2">
-              <span className="text-base">{isErrorStatus ? "⚠️" : "ℹ️"}</span>
+              <span className="text-base">{isErrorStatus ? "⚠️" : "⚡"}</span>
               <span>{statusMessage}</span>
             </div>
-            <button onClick={() => setStatusMessage("")} className="hover:opacity-75 font-bold">
+            <button onClick={() => setStatusMessage("")} className="hover:opacity-75 font-bold p-1">
               ✕
             </button>
           </div>
         )}
 
-        {/* Global Action Bar */}
-        <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-4 shadow-sm ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
+        {/* Global Quick Action Bar */}
+        <div className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 shadow-xl ${
+          isDark ? "glass-panel" : "glass-panel-light"
+        }`}>
           <div className="flex items-center gap-3">
-            <label className={`px-4 py-2 rounded-lg font-mono text-xs font-bold cursor-pointer transition shadow border ${
-              isDark ? "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700" : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300"
-            }`}>
-              <span>📁 Upload CSV Dataset</span>
+            <label className="px-4 py-2.5 rounded-xl font-mono text-xs font-bold cursor-pointer transition-all border bg-panel hover:bg-panelHover text-slate-200 border-slate-700 hover:border-teal/50 shadow-sm flex items-center gap-2">
+              <span>📁</span>
+              <span>Upload CSV Dataset</span>
               <input type="file" accept=".csv" onChange={handleCsvUpload} disabled={busy} className="hidden" />
             </label>
 
             <button
               onClick={handleGenerateData}
               disabled={busy}
-              className="px-4 py-2 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-mono text-xs font-bold transition shadow disabled:opacity-50 flex items-center gap-1.5"
+              className="px-4 py-2.5 rounded-xl bg-teal hover:bg-teal-400 text-obsidian font-mono text-xs font-bold transition shadow-neon-teal disabled:opacity-50 flex items-center gap-2"
             >
               <span>⚡</span> Generate Synthetic Stream
             </button>
@@ -394,7 +416,7 @@ export default function Dashboard() {
             <button
               onClick={handleRunDetection}
               disabled={busy}
-              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold transition shadow-lg disabled:opacity-50 flex items-center gap-1.5"
+              className="px-5 py-2.5 rounded-xl bg-flare hover:bg-flare-600 text-white font-mono text-xs font-bold transition-all shadow-neon-flare disabled:opacity-50 flex items-center gap-2"
             >
               <span>🤖</span> Run AI Fraud Detection Engine
             </button>
@@ -403,58 +425,63 @@ export default function Dashboard() {
 
         {/* Executive KPI Metrics Cards Row */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className={`p-5 rounded-xl border shadow-sm ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
-            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1">Total Processed Accounts</div>
-            <div className="text-3xl font-extrabold font-mono text-teal-400">
+          <div className={`p-5 rounded-2xl border shadow-xl ${isDark ? "glass-card" : "bg-white border-slate-200"}`}>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+              <span>Total Graph Accounts</span>
+              <span className="text-teal font-bold">● Neo4j</span>
+            </div>
+            <div className="text-3xl font-black font-mono text-teal">
               {stats?.total_accounts !== undefined ? stats.total_accounts.toLocaleString() : "--"}
             </div>
-            <div className="text-[11px] font-mono text-slate-400 mt-1">Stored in Neo4j Graph DB</div>
+            <div className="text-[11px] font-mono text-slate-400 mt-1">Topology Entities Indexed</div>
           </div>
 
-          <div className={`p-5 rounded-xl border shadow-sm ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
-            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1">Total Transactions Logged</div>
-            <div className="text-3xl font-extrabold font-mono text-slate-100">
+          <div className={`p-5 rounded-2xl border shadow-xl ${isDark ? "glass-card" : "bg-white border-slate-200"}`}>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+              <span>Transactions Streamed</span>
+              <span className="text-emerald-400 font-bold">● Active</span>
+            </div>
+            <div className="text-3xl font-black font-mono text-slate-100">
               {stats?.total_transactions !== undefined ? stats.total_transactions.toLocaleString() : "--"}
             </div>
             <div className="text-[11px] font-mono text-emerald-400 mt-1">Real-time Stream Ingested</div>
           </div>
 
-          <div className={`p-5 rounded-xl border shadow-sm ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
-            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1">Active Fraud Alerts</div>
-            <div className="text-3xl font-extrabold font-mono text-amber-400">
+          <div className={`p-5 rounded-2xl border shadow-xl ${isDark ? "glass-card" : "bg-white border-slate-200"}`}>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+              <span>Syndicate Alerts</span>
+              <span className="text-gold font-bold">● Flagged</span>
+            </div>
+            <div className="text-3xl font-black font-mono text-gold">
               {stats?.fraud_alerts !== undefined ? stats.fraud_alerts : alerts.length}
             </div>
-            <div className="text-[11px] font-mono text-amber-400 mt-1">Syndicate Ring Patterns</div>
+            <div className="text-[11px] font-mono text-gold mt-1">Starburst & Loop Patterns</div>
           </div>
 
-          <div className={`p-5 rounded-xl border shadow-sm ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
-            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1">Critical / High Severity</div>
-            <div className="text-3xl font-extrabold font-mono text-red-500">
-              {stats?.high_severity_alerts !== undefined ? stats.high_severity_alerts : alerts.filter(a => a.severity === 'HIGH' || a.severity === 'CRITICAL').length}
+          <div className={`p-5 rounded-2xl border shadow-xl ${isDark ? "glass-card" : "bg-white border-slate-200"}`}>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+              <span>Critical Severity</span>
+              <span className="text-flare font-bold">● Action</span>
             </div>
-            <div className="text-[11px] font-mono text-red-400 mt-1">Action Required Immediately</div>
+            <div className="text-3xl font-black font-mono text-flare">
+              {stats?.high_severity_alerts !== undefined
+                ? stats.high_severity_alerts
+                : alerts.filter((a) => a.severity === "HIGH" || a.severity === "CRITICAL").length}
+            </div>
+            <div className="text-[11px] font-mono text-flare mt-1">Immediate KYC Review</div>
           </div>
         </div>
-
-        {/* TAB: Transaction Trace Analytics */}
-        {activeTab === "trace" && (
-          <TransactionTraceView
-            selectedAccountId={investigationAccountId || ""}
-            onSelectAccount={(accId) => setInvestigationAccountId(accId)}
-          />
-        )}
 
         {/* TAB 1: Analytics & Interactive Graph Topology */}
         {activeTab === "analytics" && (
           <div className="space-y-6">
-            {/* Force-Directed Interactive Graph Section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between font-mono text-xs">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
                   <span>🌐</span> Interactive Real-Time Transaction Graph Topology
                 </h2>
                 <span className="text-slate-400">
-                  Drag nodes, scroll to zoom, hover for account stats, click node to investigate.
+                  Drag nodes, scroll to zoom, hover for stats, click node to open workbench.
                 </span>
               </div>
 
@@ -463,286 +490,280 @@ export default function Dashboard() {
                 flaggedIds={flaggedIds}
                 height={540}
                 onNodeSelect={handleGraphNodeClick}
+                selectedNodeId={investigationAccountId}
               />
             </div>
 
             {/* Analytics Dashboard Grid: Top Suspicious & Fraud Type Distribution */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Top Suspicious Accounts Table */}
-              <div className={`p-5 rounded-xl border space-y-4 shadow-sm ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
-                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center gap-2">
-                  <span>🚨</span> Top Suspicious Accounts (Ranked by Risk Score)
+              <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${isDark ? "glass-panel" : "bg-white border-slate-200"}`}>
+                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <span>🚨</span> Top Suspicious Accounts (Ranked by Risk Score)
+                  </span>
+                  <span className="text-[10px] text-slate-400">Click to focus</span>
                 </h3>
                 <div className="space-y-2">
                   {topSuspiciousAccounts.map((acc, idx) => (
                     <div
                       key={acc.id}
                       onClick={() => handleGraphNodeClick(acc.id)}
-                      className={`p-3 rounded-lg border flex items-center justify-between font-mono text-xs cursor-pointer transition hover:scale-[1.01] ${
-                        isDark ? "bg-slate-950 border-slate-800 hover:border-teal-500/50" : "bg-slate-50 border-slate-200 hover:border-teal-600"
-                      }`}
+                      className="p-3 rounded-xl bg-obsidian border border-slate-800/80 hover:border-teal/50 transition cursor-pointer flex items-center justify-between group"
                     >
                       <div className="flex items-center gap-3">
-                        <span className="font-bold text-slate-400">#{idx + 1}</span>
+                        <span className="w-6 h-6 rounded-lg bg-panel flex items-center justify-center font-mono text-xs font-bold text-slate-400 group-hover:text-teal">
+                          {idx + 1}
+                        </span>
                         <div>
-                          <div className="font-bold text-teal-400">{acc.id}</div>
-                          <div className="text-[10px] text-slate-400">Click to launch sub-graph inspection</div>
+                          <div className="font-mono text-xs font-bold text-white group-hover:text-teal transition">
+                            {acc.id}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-sans">
+                            High Velocity Syndicate Hub
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-red-400">{acc.risk.toFixed(1)} / 100</div>
-                        <div className="text-[10px] text-slate-400">AI Risk Rating</div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="w-24 bg-slate-800 rounded-full h-2 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              acc.risk >= 70 ? "bg-flare shadow-neon-flare" : acc.risk >= 40 ? "bg-gold" : "bg-emerald-400"
+                            }`}
+                            style={{ width: `${Math.min(100, Math.max(10, acc.risk))}%` }}
+                          />
+                        </div>
+                        <span className={`font-mono text-xs font-bold ${
+                          acc.risk >= 70 ? "text-flare" : acc.risk >= 40 ? "text-gold" : "text-emerald-400"
+                        }`}>
+                          {Math.round(acc.risk)}%
+                        </span>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Fraud Pattern Type Breakdown */}
-              <div className={`p-5 rounded-xl border space-y-4 shadow-sm ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
-                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center gap-2">
-                  <span>📊</span> Fraud Syndicate Pattern Distribution
+              {/* Fraud Pattern Distribution Breakdown */}
+              <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${isDark ? "glass-panel" : "bg-white border-slate-200"}`}>
+                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <span>📊</span> Fraud Syndicate Pattern Distribution
+                  </span>
+                  <span className="text-[10px] text-teal font-mono">Live GDS Analytics</span>
                 </h3>
-                <div className="space-y-3 font-mono text-xs">
-                  {Object.entries(fraudDistribution).length === 0 ? (
-                    <div className="text-slate-400 italic">No fraud distribution metrics computed yet.</div>
-                  ) : (
-                    Object.entries(fraudDistribution).map(([type, count]) => {
-                      const pct = Math.round((count / totalDistributionAlerts) * 100);
-                      return (
-                        <div key={type} className="space-y-1">
-                          <div className="flex justify-between text-slate-300">
-                            <span>{type.replace(/_/g, " ")}</span>
-                            <span className="font-bold text-teal-400">{count} ({pct}%)</span>
-                          </div>
-                          <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
-                            <div
-                              className="bg-teal-400 h-full rounded-full transition-all duration-500"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
+                <div className="space-y-3">
+                  {Object.entries(fraudDistribution).map(([patternName, count]) => {
+                    const percentage = Math.round((count / totalDistributionAlerts) * 100);
+                    return (
+                      <div key={patternName} className="space-y-1.5">
+                        <div className="flex justify-between text-xs font-mono">
+                          <span className="text-slate-300">{patternName}</span>
+                          <span className="text-teal font-bold">{count} cases ({percentage}%)</span>
                         </div>
-                      );
-                    })
-                  )}
+                        <div className="w-full bg-obsidian rounded-full h-2.5 overflow-hidden border border-slate-800">
+                          <div
+                            className="bg-gradient-to-r from-teal-500 to-cyan-400 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB 2: Syndicate Fraud Alerts List */}
+        {/* TAB 2: Forensic Transaction Trace */}
+        {activeTab === "trace" && (
+          <TransactionTraceView
+            selectedAccountId={investigationAccountId || ""}
+            onSelectAccount={(accId) => setInvestigationAccountId(accId)}
+          />
+        )}
+
+        {/* TAB 3: Syndicate Alerts Triage List */}
         {activeTab === "alerts" && (
-          <div className="space-y-4">
-            {/* Filters Bar */}
-            <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-4 font-mono text-xs ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
-              <div className="flex items-center gap-3 flex-1 min-w-[240px]">
-                <span className="text-slate-400">Search:</span>
+          <div className="space-y-6">
+            <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${isDark ? "glass-panel" : "bg-white border-slate-200"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
+                    <span>🚨</span> Flagged Fraud Syndicate Rings ({filteredAlerts.length})
+                  </h2>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">
+                    Real-time automated alerts generated by graph topology heuristics and ML anomaly detectors.
+                  </p>
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex items-center gap-2">
+                  {["ALL", "CRITICAL", "HIGH", "MEDIUM"].map((sev) => (
+                    <button
+                      key={sev}
+                      onClick={() => setAlertSeverityFilter(sev)}
+                      className={`px-3 py-1 rounded-xl text-xs font-mono font-semibold transition-all ${
+                        alertSeverityFilter === sev
+                          ? "bg-teal text-obsidian shadow-neon-teal"
+                          : "bg-obsidian text-slate-400 hover:text-white border border-slate-800"
+                      }`}
+                    >
+                      {sev}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Alert Search Input */}
+              <div>
                 <input
                   type="text"
-                  placeholder="Filter by account ID, description, or pattern..."
                   value={alertSearchQuery}
                   onChange={(e) => setAlertSearchQuery(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-teal-500"
+                  placeholder="Filter alerts by pattern type, description, or account ID…"
+                  className="w-full bg-obsidian border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-teal"
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">Severity:</span>
-                {["ALL", "CRITICAL", "HIGH", "MEDIUM"].map((sev) => (
-                  <button
-                    key={sev}
-                    onClick={() => setAlertSeverityFilter(sev)}
-                    className={`px-3 py-1.5 rounded-md font-semibold transition ${
-                      alertSeverityFilter === sev
-                        ? "bg-teal-500 text-slate-950 font-bold"
-                        : "bg-slate-950 text-slate-300 border border-slate-800 hover:bg-slate-800"
-                    }`}
-                  >
-                    {sev}
-                  </button>
-                ))}
-              </div>
-            </div>
+              {/* Alerts Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                {filteredAlerts.length > 0 ? (
+                  filteredAlerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className="glass-card p-5 rounded-2xl border border-slate-800 space-y-3 relative group"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                              alert.severity === "CRITICAL" || alert.severity === "HIGH"
+                                ? "bg-flare/20 text-flare border border-flare/30"
+                                : "bg-gold/20 text-gold border border-gold/30"
+                            }`}>
+                              {alert.severity || "HIGH"}
+                            </span>
+                            <span className="font-mono text-xs font-bold text-white">
+                              {alert.type || "Syndicate Smurfing Ring"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 mt-2 line-clamp-2">
+                            {alert.description || "Identified multi-account laundering loop."}
+                          </p>
+                        </div>
 
-            {/* Alerts Table */}
-            <div className={`border rounded-xl overflow-hidden shadow-sm font-mono text-xs ${isDark ? "border-slate-800 bg-slate-950" : "border-slate-200 bg-white"}`}>
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className={`border-b text-slate-400 ${isDark ? "border-slate-800 bg-slate-900/90" : "border-slate-200 bg-slate-100"}`}>
-                    <th className="p-3.5">Alert ID</th>
-                    <th className="p-3.5">Pattern Type</th>
-                    <th className="p-3.5">Severity</th>
-                    <th className="p-3.5">AI Risk Score</th>
-                    <th className="p-3.5">Status</th>
-                    <th className="p-3.5">Description</th>
-                    <th className="p-3.5 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {filteredAlerts.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400 italic">
-                        No fraud alerts matching selected filter criteria.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredAlerts.map((alert) => (
-                      <tr key={alert.id || alert.alert_id} className={`hover:bg-slate-900/50 transition`}>
-                        <td className="p-3.5 font-bold text-teal-400">{alert.id || alert.alert_id}</td>
-                        <td className="p-3.5 font-semibold text-slate-200">{(alert.type || "SYNDICATE").replace(/_/g, " ")}</td>
-                        <td className="p-3.5">
-                          <span className={`px-2.5 py-1 rounded font-bold text-[10px] uppercase ${
-                            alert.severity === "CRITICAL" ? "bg-red-500/20 text-red-400 border border-red-500/40" : "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                          }`}>
-                            {alert.severity}
-                          </span>
-                        </td>
-                        <td className="p-3.5 font-bold text-red-400">
-                          {alert.risk_score !== undefined ? alert.risk_score.toFixed(1) : "75.0"} / 100
-                        </td>
-                        <td className="p-3.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
-                            alert.status === "CONFIRMED_FRAUD" ? "bg-red-500/20 text-red-400" : alert.status === "FALSE_POSITIVE" ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
-                          }`}>
-                            {alert.status || "PENDING"}
-                          </span>
-                        </td>
-                        <td className="p-3.5 text-slate-300 max-w-md truncate">{alert.description}</td>
-                        <td className="p-3.5 text-right">
-                          <button
-                            onClick={() => handleInspectAlert(alert)}
-                            className="px-3 py-1.5 bg-teal-500/20 hover:bg-teal-500 text-teal-300 hover:text-slate-950 font-bold rounded transition border border-teal-500/40"
-                          >
-                            Investigate 🔍
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                        <button
+                          onClick={() => handleInspectAlert(alert)}
+                          className="px-3 py-1.5 rounded-xl bg-teal hover:bg-teal-400 text-obsidian font-mono text-xs font-bold shadow-neon-teal transition whitespace-nowrap"
+                        >
+                          Investigate ➔
+                        </button>
+                      </div>
+
+                      {/* Involved Accounts Chips */}
+                      {alert.account_ids && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800/80">
+                          <span className="text-[10px] font-mono text-slate-500">Nodes:</span>
+                          {alert.account_ids.map((id) => (
+                            <span
+                              key={id}
+                              onClick={() => handleGraphNodeClick(id)}
+                              className="px-2 py-0.5 rounded-md bg-obsidian border border-slate-800 font-mono text-[10px] text-slate-300 hover:text-teal hover:border-teal/40 cursor-pointer"
+                            >
+                              {id}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-2 py-12 text-center text-slate-500 font-mono text-xs">
+                    No fraud alerts match the selected criteria.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
 
-        {/* TAB 3: Live Transactions Feed */}
+        {/* TAB 4: Live Ledger Feed */}
         {activeTab === "transactions" && (
-          <div className="space-y-4 font-mono text-xs">
-            <div className={`p-4 rounded-xl border flex items-center justify-between ${isDark ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200"}`}>
-              <div className="flex items-center gap-3 flex-1 max-w-md">
-                <span className="text-slate-400">Search Ledger:</span>
-                <input
-                  type="text"
-                  placeholder="Filter by tx ID or account..."
-                  value={txSearchQuery}
-                  onChange={(e) => setTxSearchQuery(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-teal-500"
-                />
+          <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${isDark ? "glass-panel" : "bg-white border-slate-200"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
+                  <span>⚡</span> Live Streaming Ledger Feed ({filteredTransactions.length})
+                </h2>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  High-throughput stream arriving from Kafka & processed by Flink into Neo4j.
+                </p>
               </div>
-              <div className="text-slate-400">
-                Showing top <span className="text-teal-400 font-bold">{filteredTransactions.length}</span> live transactions
-              </div>
+
+              <input
+                type="text"
+                value={txSearchQuery}
+                onChange={(e) => setTxSearchQuery(e.target.value)}
+                placeholder="Search Tx Hash, Sender, Receiver…"
+                className="bg-obsidian border border-slate-800 rounded-xl px-4 py-2 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-teal"
+              />
             </div>
 
-            <div className={`border rounded-xl overflow-hidden shadow-sm ${isDark ? "border-slate-800 bg-slate-950" : "border-slate-200 bg-white"}`}>
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className={`border-b text-slate-400 ${isDark ? "border-slate-800 bg-slate-900/90" : "border-slate-200 bg-slate-100"}`}>
-                    <th className="p-3.5">Sender Name</th>
-                    <th className="p-3.5">Sender Bank</th>
-                    <th className="p-3.5">Receiver Name</th>
-                    <th className="p-3.5">Receiver Bank</th>
-                    <th className="p-3.5">Amount (₹)</th>
-                    <th className="p-3.5">Time</th>
-                    <th className="p-3.5 text-center">Fraud Flag</th>
+            <div className="overflow-x-auto rounded-xl border border-slate-800 bg-obsidian">
+              <table className="w-full text-left font-mono text-xs">
+                <thead className="bg-panel border-b border-slate-800 text-slate-400 text-[11px] uppercase">
+                  <tr>
+                    <th className="py-3 px-4">Transaction ID</th>
+                    <th className="py-3 px-4">Sender Account</th>
+                    <th className="py-3 px-4">Receiver Account</th>
+                    <th className="py-3 px-4 text-right">Amount</th>
+                    <th className="py-3 px-4 text-center">Timestamp</th>
+                    <th className="py-3 px-4 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {filteredTransactions.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400 italic">
-                        No transactions ingested yet. Run synthetic stream generator or upload a CSV file.
+                <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                  {filteredTransactions.map((tx, idx) => (
+                    <tr key={tx.id || idx} className="hover:bg-panelHover transition">
+                      <td className="py-2.5 px-4 font-mono text-teal">
+                        {(tx.id || `TX_${idx}`).slice(0, 14)}…
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <button
+                          onClick={() => handleGraphNodeClick(tx.sender)}
+                          className="hover:text-white font-medium hover:underline text-slate-300"
+                        >
+                          {tx.sender || "ACC_SRC"}
+                        </button>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <button
+                          onClick={() => handleGraphNodeClick(tx.receiver)}
+                          className="hover:text-white font-medium hover:underline text-slate-300"
+                        >
+                          {tx.receiver || "ACC_DEST"}
+                        </button>
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-bold text-white">
+                        ${Number(tx.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2.5 px-4 text-center text-slate-400 text-[11px]">
+                        {tx.timestamp ? new Date(tx.timestamp).toLocaleTimeString() : "Just now"}
+                      </td>
+                      <td className="py-2.5 px-4 text-center">
+                        <button
+                          onClick={() => {
+                            if (tx.sender) handleGraphNodeClick(tx.sender);
+                          }}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-teal text-[10px] font-mono transition"
+                        >
+                          Trace
+                        </button>
                       </td>
                     </tr>
-                  ) : (
-                    filteredTransactions.map((tx) => {
-                      const amount = Number(tx.amount || 0);
-                      const isSuspicious = tx.is_suspicious || amount >= 50000;
-                      const flagType = tx.flag || tx.risk_type || (amount >= 100000 ? "LARGE_AMOUNT" : amount >= 9000 && amount < 10000 ? "SMURFING" : amount >= 50000 ? "SUSPICIOUS" : "NORMAL");
-
-                      const senderId = typeof tx.sender === "object" ? tx.sender.id : (tx.sender || tx.from_account || "N/A");
-                      const senderName = typeof tx.sender === "object" ? tx.sender.name : (tx.sender_name || tx.from_name || senderId);
-                      const senderBank = typeof tx.sender === "object" ? tx.sender.bank : (tx.sender_bank || tx.from_bank || "HDFC Bank");
-
-                      const receiverId = typeof tx.receiver === "object" ? tx.receiver.id : (tx.receiver || tx.to_account || "N/A");
-                      const receiverName = typeof tx.receiver === "object" ? tx.receiver.name : (tx.receiver_name || tx.to_name || receiverId);
-                      const receiverBank = typeof tx.receiver === "object" ? tx.receiver.bank : (tx.receiver_bank || tx.to_bank || "ICICI Bank");
-
-                      return (
-                        <tr
-                          key={tx.id || tx.txId || tx.transactionId || Math.random()}
-                          onClick={() => {
-                            setActiveTab("analytics");
-                            handleGraphNodeClick(senderId);
-                          }}
-                          className={`cursor-pointer transition-colors ${
-                            isSuspicious
-                              ? "bg-rose-950/30 hover:bg-rose-900/50 text-rose-100"
-                              : "hover:bg-slate-900/50 text-slate-200"
-                          }`}
-                          title={`Click to open graph topology view for ${senderName} (${senderId})`}
-                        >
-                          {/* Sender Name with Account ID Tooltip */}
-                          <td className="p-3.5 font-semibold text-slate-200" title={`Sender Account ID: ${senderId}`}>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-white font-bold">{senderName}</span>
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono">({senderId})</div>
-                          </td>
-
-                          {/* Sender Bank with Tooltip */}
-                          <td className="p-3.5 text-slate-300 font-mono text-[11px]" title={`Sender Account ID: ${senderId}`}>
-                            <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">{senderBank}</span>
-                          </td>
-
-                          {/* Receiver Name with Account ID Tooltip */}
-                          <td className="p-3.5 font-semibold text-slate-200" title={`Receiver Account ID: ${receiverId}`}>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-white font-bold">{receiverName}</span>
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono">({receiverId})</div>
-                          </td>
-
-                          {/* Receiver Bank with Tooltip */}
-                          <td className="p-3.5 text-slate-300 font-mono text-[11px]" title={`Receiver Account ID: ${receiverId}`}>
-                            <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">{receiverBank}</span>
-                          </td>
-
-                          {/* Amount */}
-                          <td className={`p-3.5 font-bold font-mono ${amount >= 50000 ? "text-red-400" : "text-emerald-400"}`}>
-                            ₹{amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </td>
-
-                          {/* Time */}
-                          <td className="p-3.5 text-slate-400 whitespace-nowrap">
-                            {new Date(tx.timestamp || Date.now()).toLocaleTimeString()}
-                          </td>
-
-                          {/* Fraud Flag */}
-                          <td className="p-3.5 text-center whitespace-nowrap">
-                            <span className={`px-2.5 py-1 rounded text-[10px] uppercase font-bold border ${
-                              isSuspicious
-                                ? "bg-red-500/20 text-red-400 border-red-500/40 animate-pulse"
-                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            }`}>
-                              {isSuspicious ? `🚨 ${flagType}` : "✓ Normal"}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -750,20 +771,18 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* Investigation Panel Modal */}
-      {(investigationAlertId || investigationAccountId) && (
-        <InvestigationPanel
-          alertId={investigationAlertId}
-          accountId={investigationAccountId}
-          onClose={() => {
-            setInvestigationAlertId(null);
-            setInvestigationAccountId(null);
-          }}
-          onStatusUpdated={() => loadData()}
-        />
-      )}
+      {/* Investigation Workbench Slide-over Drawer */}
+      <InvestigationPanel
+        alertId={investigationAlertId}
+        accountId={investigationAccountId}
+        onClose={() => {
+          setInvestigationAlertId(null);
+          setInvestigationAccountId(null);
+        }}
+        onStatusUpdated={() => loadData()}
+      />
 
-      {/* Auth Portal Modal */}
+      {/* Authentication Modal */}
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}

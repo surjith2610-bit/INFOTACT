@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import ForceGraph2D from "react-force-graph-2d";
-import { fetchTransactionTrace, searchTransactionsTrace, getErrorMessage } from "../api/client";
+import { fetchTransactionTrace, searchTransactionsTrace, getErrorMessage } from "../api/client.js";
 
 export default function TransactionTraceView({ selectedAccountId = "", onSelectAccount }) {
   const [searchAccountId, setSearchAccountId] = useState(selectedAccountId || "");
@@ -14,16 +14,16 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
   const [error, setError] = useState("");
   const [traceData, setTraceData] = useState(null);
   const [searchResult, setSearchResult] = useState(null);
+  const [copiedHash, setCopiedHash] = useState(null);
   const graphRef = useRef(null);
 
-  // Sync selectedAccountId prop changes
+  // Sync selectedAccountId prop
   useEffect(() => {
     if (selectedAccountId) {
       setSearchAccountId(selectedAccountId);
     }
   }, [selectedAccountId]);
 
-  // Load data whenever filters change or active account changes
   const loadTrace = async () => {
     setLoading(true);
     setError("");
@@ -71,6 +71,12 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
     setSearchResult(null);
   };
 
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedHash(text);
+    setTimeout(() => setCopiedHash(null), 2000);
+  };
+
   // Combine transactions for table display
   const combinedTransactions = useMemo(() => {
     if (traceData) {
@@ -93,426 +99,341 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
       return {
         totalIncoming: totalIn,
         totalOutgoing: totalOut,
-        totalVolume: totalIn + totalOut,
+        netFlow: totalIn - totalOut,
         suspiciousCount: suspicious,
         accountName: traceData.account?.name || searchAccountId,
-        accountBank: traceData.account?.bank || "N/A",
-      };
-    }
-    if (searchResult) {
-      return {
-        totalIncoming: searchResult.total_incoming || 0,
-        totalOutgoing: searchResult.total_outgoing || 0,
-        totalVolume: searchResult.total_volume || 0,
-        suspiciousCount: searchResult.suspicious_count || 0,
-        accountName: "All Filtered Accounts",
-        accountBank: searchBank || "All Banks",
+        accountBank: traceData.account?.bank || "Global Interbank",
       };
     }
     return {
       totalIncoming: 0,
       totalOutgoing: 0,
-      totalVolume: 0,
+      netFlow: 0,
       suspiciousCount: 0,
-      accountName: "N/A",
-      accountBank: "N/A",
+      accountName: "Multi-Account Filter",
+      accountBank: "All Integrated Banks",
     };
-  }, [traceData, searchResult, combinedTransactions, searchAccountId, searchBank]);
+  }, [traceData, searchAccountId, combinedTransactions]);
 
-  // Build Graph Nodes & Edges from transactions
-  const graphData = useMemo(() => {
-    const nodesMap = {};
+  // Build local sub-graph for the trace
+  const subGraphData = useMemo(() => {
+    if (!traceData) return { nodes: [], links: [] };
+
+    const nodesMap = new Map();
     const links = [];
 
-    combinedTransactions.forEach((tx) => {
-      const fromId = tx.from_account || "UNKNOWN_SRC";
-      const toId = tx.to_account || "UNKNOWN_DST";
+    // Center target account
+    nodesMap.set(searchAccountId, {
+      id: searchAccountId,
+      name: traceData.account?.name || searchAccountId,
+      isTarget: true,
+      val: 18,
+    });
 
-      if (!nodesMap[fromId]) {
-        nodesMap[fromId] = {
-          id: fromId,
-          name: tx.from_name || fromId,
-          bank: tx.from_bank || "Bank",
-          isTarget: fromId === searchAccountId,
-        };
+    (traceData.incoming_transactions || []).forEach((tx) => {
+      const sender = tx.sender || "Unknown";
+      if (!nodesMap.has(sender)) {
+        nodesMap.set(sender, { id: sender, name: tx.sender_name || sender, isTarget: false, val: 8 });
       }
-      if (!nodesMap[toId]) {
-        nodesMap[toId] = {
-          id: toId,
-          name: tx.to_name || toId,
-          bank: tx.to_bank || "Bank",
-          isTarget: toId === searchAccountId,
-        };
-      }
-
       links.push({
-        source: fromId,
-        target: toId,
+        source: sender,
+        target: searchAccountId,
         amount: tx.amount,
-        timestamp: tx.timestamp,
-        transactionId: tx.transaction_id || tx.id,
-        isSuspicious: Boolean(tx.is_suspicious),
+        isSuspicious: tx.is_suspicious,
+      });
+    });
+
+    (traceData.outgoing_transactions || []).forEach((tx) => {
+      const receiver = tx.receiver || "Unknown";
+      if (!nodesMap.has(receiver)) {
+        nodesMap.set(receiver, { id: receiver, name: tx.receiver_name || receiver, isTarget: false, val: 8 });
+      }
+      links.push({
+        source: searchAccountId,
+        target: receiver,
+        amount: tx.amount,
+        isSuspicious: tx.is_suspicious,
       });
     });
 
     return {
-      nodes: Object.values(nodesMap),
+      nodes: Array.from(nodesMap.values()),
       links,
     };
-  }, [combinedTransactions, searchAccountId]);
-
-  const formatCurrency = (amt) => {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amt || 0);
-  };
-
-  const formatDateTime = (ts) => {
-    if (!ts) return "N/A";
-    try {
-      return new Date(ts).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return ts;
-    }
-  };
+  }, [traceData, searchAccountId]);
 
   return (
-    <div className="space-y-6">
-      {/* Header & Controls Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
+    <div className="space-y-6 font-sans">
+      {/* Header & Filter Controls Bar */}
+      <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <span className="p-2 bg-indigo-600/20 text-indigo-400 rounded-lg text-lg">🔍</span>
-              Transaction Trace & Flow Workbench
+            <h2 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
+              <span>🔍</span> Forensic Transaction Trace & Multi-Hop Audit
             </h2>
-            <p className="text-slate-400 text-xs mt-1">
-              Investigate account transfer chains, Bank-to-Bank flows, and smurfing transaction patterns.
+            <p className="text-xs text-slate-400 font-mono mt-0.5">
+              Inspect historical inbound/outbound transfer flow, intermediary relays, and velocity anomalies.
             </p>
           </div>
 
-          {/* View Switcher */}
-          <div className="flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700 self-start">
+          {/* View Mode Switcher */}
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-obsidian border border-slate-800 text-xs font-mono">
             <button
               onClick={() => setViewMode("split")}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                viewMode === "split" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
+              className={`px-3 py-1.5 rounded-lg transition ${
+                viewMode === "split" ? "bg-teal text-obsidian font-bold shadow-neon-teal" : "text-slate-400 hover:text-white"
               }`}
             >
               Split View
             </button>
             <button
-              onClick={() => setViewMode("table")}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                viewMode === "table" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
+              onClick={() => setViewMode("graph")}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                viewMode === "graph" ? "bg-teal text-obsidian font-bold shadow-neon-teal" : "text-slate-400 hover:text-white"
               }`}
             >
-              Table Only
+              Topology Subgraph
             </button>
             <button
-              onClick={() => setViewMode("graph")}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                viewMode === "graph" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
+              onClick={() => setViewMode("table")}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                viewMode === "table" ? "bg-teal text-obsidian font-bold shadow-neon-teal" : "text-slate-400 hover:text-white"
               }`}
             >
-              Graph Only
+              Ledger Table
             </button>
           </div>
         </div>
 
-        {/* Filters Form */}
-        <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-3 border-t border-slate-800">
-          <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">Account Number</label>
+        {/* Search & Filter Inputs Grid */}
+        <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-2">
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono uppercase text-slate-400">Target Account ID</label>
             <input
               type="text"
-              placeholder="e.g. ACC0001 or SHELL01"
               value={searchAccountId}
               onChange={(e) => setSearchAccountId(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              placeholder="e.g. ACC_9941"
+              className="w-full bg-ink border border-slate-700/80 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-teal"
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">Holder Name</label>
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono uppercase text-slate-400">Account Holder Name</label>
             <input
               type="text"
-              placeholder="e.g. Alice Smith"
               value={searchName}
               onChange={(e) => setSearchName(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              placeholder="Search by name…"
+              className="w-full bg-ink border border-slate-700/80 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-teal"
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">Bank Name</label>
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono uppercase text-slate-400">Bank Entity</label>
             <input
               type="text"
-              placeholder="e.g. HDFC or SBI"
               value={searchBank}
               onChange={(e) => setSearchBank(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              placeholder="e.g. JPM, Chase, Citi"
+              className="w-full bg-ink border border-slate-700/80 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-teal"
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">Date Range</label>
-            <div className="flex items-center gap-1">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-1/2 bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 text-[11px] text-white focus:outline-none focus:border-indigo-500"
-              />
-              <span className="text-slate-500 text-xs">-</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-1/2 bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 text-[11px] text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono uppercase text-slate-400">Date Range Start</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full bg-ink border border-slate-700/80 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-teal"
+            />
           </div>
 
           <div className="flex items-end gap-2">
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-3 py-2.5 rounded-lg shadow transition-colors flex items-center justify-center gap-1"
+              className="flex-1 bg-teal hover:bg-teal-400 text-obsidian font-mono text-xs font-bold py-2 rounded-xl shadow-neon-teal transition disabled:opacity-50"
             >
-              {loading ? "Tracing..." : "Apply Filters"}
+              {loading ? "Tracing…" : "Execute Trace"}
             </button>
             <button
               type="button"
               onClick={handleClearFilters}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs px-3 py-2.5 rounded-lg border border-slate-700 transition-colors"
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs rounded-xl border border-slate-700 transition"
+              title="Reset search"
             >
-              Clear
+              ✕
             </button>
           </div>
         </form>
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-xs flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError("")} className="text-red-400 hover:text-white font-bold ml-2">✕</button>
+        <div className="p-4 rounded-xl bg-flare/10 border border-flare/30 text-flare text-xs font-mono flex items-center justify-between">
+          <span>⚠️ {error}</span>
+          <button onClick={() => setError("")} className="font-bold">✕</button>
         </div>
       )}
 
-      {/* Summary Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-900 border border-emerald-500/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-2 h-full bg-emerald-500" />
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Total Incoming</p>
-          <h3 className="text-xl font-extrabold text-emerald-400 mt-1">{formatCurrency(metrics.totalIncoming)}</h3>
-          <p className="text-[11px] text-slate-500 mt-1">Inbound transfers to target</p>
+      {/* Metric Cards Row */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 font-mono">
+        <div className="glass-card p-4 rounded-xl border border-slate-800">
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Total Inflow Volume</div>
+          <div className="text-2xl font-black text-emerald-400 mt-1">
+            ${metrics.totalIncoming.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Inbound transfers</div>
         </div>
 
-        <div className="bg-slate-900 border border-sky-500/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-2 h-full bg-sky-500" />
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Total Outgoing</p>
-          <h3 className="text-xl font-extrabold text-sky-400 mt-1">{formatCurrency(metrics.totalOutgoing)}</h3>
-          <p className="text-[11px] text-slate-500 mt-1">Outbound transfers from target</p>
+        <div className="glass-card p-4 rounded-xl border border-slate-800">
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Total Outflow Volume</div>
+          <div className="text-2xl font-black text-cyan-400 mt-1">
+            ${metrics.totalOutgoing.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Outbound transfers</div>
         </div>
 
-        <div className="bg-slate-900 border border-indigo-500/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-2 h-full bg-indigo-500" />
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Net Volume</p>
-          <h3 className="text-xl font-extrabold text-indigo-300 mt-1">{formatCurrency(metrics.totalVolume)}</h3>
-          <p className="text-[11px] text-slate-500 mt-1">{combinedTransactions.length} traced transactions</p>
+        <div className="glass-card p-4 rounded-xl border border-slate-800">
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Net Retained Balance</div>
+          <div className={`text-2xl font-black mt-1 ${metrics.netFlow >= 0 ? "text-teal" : "text-amber-400"}`}>
+            ${metrics.netFlow.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Flow Differential</div>
         </div>
 
-        <div className="bg-slate-900 border border-rose-500/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-2 h-full bg-rose-500" />
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Suspicious Transfers</p>
-          <h3 className="text-xl font-extrabold text-rose-500 mt-1">{metrics.suspiciousCount}</h3>
-          <p className="text-[11px] text-slate-500 mt-1">Smurfing & repeated velocity flags</p>
+        <div className="glass-card p-4 rounded-xl border border-slate-800">
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Suspicious Transfers</div>
+          <div className="text-2xl font-black text-flare mt-1">
+            {metrics.suspiciousCount}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Flagged high velocity/cyclic</div>
         </div>
       </div>
 
-      {/* Main Content Layout */}
+      {/* Main Content Area: Split / Graph / Table */}
       <div className={`grid gap-6 ${viewMode === "split" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-        {/* Table View */}
-        {(viewMode === "split" || viewMode === "table") && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                Transaction Flow Trace ({combinedTransactions.length})
-              </h3>
-              <span className="text-slate-400 text-xs font-mono">
-                {searchAccountId ? `Account: ${searchAccountId}` : "Global Trace"}
+        {/* Topology Sub-Graph */}
+        {(viewMode === "split" || viewMode === "graph") && (
+          <div className="glass-panel p-4 rounded-2xl border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                <span>🕸️</span> Flow Sub-Graph Topology
+              </span>
+              <span className="text-slate-400 text-[11px]">
+                {subGraphData.nodes.length} Connected Entities • {subGraphData.links.length} Transfers
               </span>
             </div>
 
-            <div className="overflow-x-auto max-h-[500px] overflow-y-auto rounded-lg border border-slate-800">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="bg-slate-800 text-slate-300 uppercase text-[10px] tracking-wider sticky top-0 z-10">
-                  <tr>
-                    <th className="py-2.5 px-3">From Name / Bank</th>
-                    <th className="py-2.5 px-3">To Name / Bank</th>
-                    <th className="py-2.5 px-3 text-right">Amount</th>
-                    <th className="py-2.5 px-3">Timestamp</th>
-                    <th className="py-2.5 px-3">Tx ID</th>
-                    <th className="py-2.5 px-3">Risk Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {combinedTransactions.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
-                        No transactions found matching the specified filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    combinedTransactions.map((tx, idx) => {
-                      const isSuspicious = Boolean(tx.is_suspicious);
-                      return (
-                        <tr
-                          key={tx.transaction_id || tx.id || idx}
-                          className={`transition-colors ${
-                            isSuspicious
-                              ? "bg-rose-950/40 hover:bg-rose-900/50 text-rose-100 border-l-4 border-l-rose-500"
-                              : "hover:bg-slate-800/40 text-slate-300"
-                          }`}
-                        >
-                          {/* Sender Info */}
-                          <td className="py-2.5 px-3">
-                            <div
-                              onClick={() => onSelectAccount && onSelectAccount(tx.from_account)}
-                              className="font-medium hover:text-indigo-400 cursor-pointer flex items-center gap-1.5"
-                            >
-                              <span className="text-white font-semibold">{tx.from_name || tx.from_account}</span>
-                            </div>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                              <span className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">{tx.from_bank || "Bank"}</span>
-                              <span className="font-mono text-slate-400">({tx.from_account})</span>
-                            </div>
-                          </td>
-
-                          {/* Receiver Info */}
-                          <td className="py-2.5 px-3">
-                            <div
-                              onClick={() => onSelectAccount && onSelectAccount(tx.to_account)}
-                              className="font-medium hover:text-indigo-400 cursor-pointer flex items-center gap-1.5"
-                            >
-                              <span className="text-white font-semibold">{tx.to_name || tx.to_account}</span>
-                            </div>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                              <span className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">{tx.to_bank || "Bank"}</span>
-                              <span className="font-mono text-slate-400">({tx.to_account})</span>
-                            </div>
-                          </td>
-
-                          {/* Amount */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-100">
-                            {formatCurrency(tx.amount)}
-                          </td>
-
-                          {/* Timestamp */}
-                          <td className="py-2.5 px-3 text-[11px] text-slate-400 whitespace-nowrap">
-                            {formatDateTime(tx.timestamp)}
-                          </td>
-
-                          {/* Transaction ID */}
-                          <td className="py-2.5 px-3 font-mono text-[10px] text-slate-400 truncate max-w-[100px]">
-                            {tx.transaction_id || tx.id}
-                          </td>
-
-                          {/* Risk Status */}
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            {isSuspicious ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                                🚨 SUSPICIOUS
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                ✓ Normal
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+            <div className="h-[420px] rounded-xl overflow-hidden bg-ink/95 border border-slate-800/80 relative">
+              {subGraphData.nodes.length > 0 ? (
+                <ForceGraph2D
+                  ref={graphRef}
+                  width={viewMode === "split" ? 560 : 1180}
+                  height={420}
+                  graphData={subGraphData}
+                  backgroundColor="#07090E"
+                  nodeColor={(n) => (n.isTarget ? "#00F2FE" : "#10B981")}
+                  nodeVal={(n) => (n.isTarget ? 14 : 7)}
+                  linkColor={() => "rgba(51, 65, 85, 0.6)"}
+                  linkDirectionalParticles={2}
+                  linkDirectionalParticleSpeed={0.006}
+                  linkDirectionalParticleColor={(l) => (l.isSuspicious ? "#FF385C" : "#00F2FE")}
+                  onNodeClick={(node) => {
+                    if (onSelectAccount) onSelectAccount(node.id);
+                  }}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center text-slate-500 font-mono text-xs">
+                  Enter an Account ID above to render sub-graph
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* Graph View (Neo4j Style Force Directed Graph) */}
-        {(viewMode === "split" || viewMode === "graph") && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                Graph Topology & Relationship Visualization
-              </h3>
-              <div className="flex items-center gap-2 text-[11px]">
-                <span className="flex items-center gap-1 text-slate-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Normal Node
-                </span>
-                <span className="flex items-center gap-1 text-slate-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" /> Suspicious Transfer
-                </span>
-              </div>
+        {/* Ledger Transactions Table */}
+        {(viewMode === "split" || viewMode === "table") && (
+          <div className="glass-panel p-4 rounded-2xl border border-slate-800 space-y-3 flex flex-col">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                <span>📑</span> Ledger Transfer History ({combinedTransactions.length})
+              </span>
+              <span className="text-slate-400 text-[11px]">Sorted chronologically</span>
             </div>
 
-            <div className="w-full h-[480px] bg-slate-950 rounded-lg overflow-hidden border border-slate-800 relative">
-              {graphData.nodes.length === 0 ? (
-                <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">
-                  No topology data available for rendering.
-                </div>
-              ) : (
-                <ForceGraph2D
-                  ref={graphRef}
-                  graphData={graphData}
-                  nodeLabel={(n) => `${n.name} (${n.bank}) - ID: ${n.id}`}
-                  nodeColor={(n) => (n.id === searchAccountId ? "#6366f1" : "#10b981")}
-                  nodeVal={(n) => (n.id === searchAccountId ? 8 : 4)}
-                  linkColor={(link) => (link.isSuspicious ? "#f43f5e" : "#475569")}
-                  linkWidth={(link) => (link.isSuspicious ? 2.5 : 1)}
-                  linkDirectionalArrowLength={4}
-                  linkDirectionalArrowRelPos={0.9}
-                  linkLabel={(link) => `Amount: ₹${link.amount} | ID: ${link.transactionId}`}
-                  onNodeClick={(node) => {
-                    if (node && node.id) {
-                      setSearchAccountId(node.id);
-                      if (onSelectAccount) onSelectAccount(node.id);
-                    }
-                  }}
-                  canvasObject={(node, ctx, globalScale) => {
-                    const label = `${node.name} (${node.bank})`;
-                    const fontSize = 12 / globalScale;
-                    ctx.font = `${fontSize}px Sans-Serif`;
-
-                    const r = node.id === searchAccountId ? 7 : 5;
-                    ctx.beginPath();
-                    ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
-                    ctx.fillStyle = node.id === searchAccountId ? "#6366f1" : "#10b981";
-                    ctx.fill();
-
-                    if (node.id === searchAccountId) {
-                      ctx.strokeStyle = "#a5b4fc";
-                      ctx.lineWidth = 2 / globalScale;
-                      ctx.stroke();
-                    }
-
-                    if (globalScale > 1.2 || node.id === searchAccountId) {
-                      ctx.fillStyle = "#e2e8f0";
-                      ctx.textAlign = "center";
-                      ctx.textBaseline = "top";
-                      ctx.fillText(label, node.x, node.y + r + 2);
-                    }
-                  }}
-                />
-              )}
+            <div className="flex-1 overflow-x-auto max-h-[420px] rounded-xl border border-slate-800 bg-obsidian">
+              <table className="w-full text-left font-mono text-xs">
+                <thead className="sticky top-0 bg-panel border-b border-slate-800 text-slate-400 text-[11px] uppercase">
+                  <tr>
+                    <th className="py-2.5 px-3">Flow</th>
+                    <th className="py-2.5 px-3">Tx Hash</th>
+                    <th className="py-2.5 px-3">Counterparty</th>
+                    <th className="py-2.5 px-3 text-right">Amount</th>
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                  {combinedTransactions.length > 0 ? (
+                    combinedTransactions.map((tx, idx) => (
+                      <tr key={tx.id || idx} className="hover:bg-panelHover transition">
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            tx.direction === "INCOMING"
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                              : "bg-cyan-500/10 text-cyan-400 border border-cyan-500/30"
+                          }`}>
+                            {tx.direction === "INCOMING" ? "↓ IN" : "↑ OUT"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <button
+                            onClick={() => copyToClipboard(tx.id || `TX_${idx}`)}
+                            className="text-slate-400 hover:text-teal font-mono text-[11px] flex items-center gap-1 group"
+                          >
+                            <span>{(tx.id || `TX_${idx}`).slice(0, 12)}…</span>
+                            <span className="text-[9px] text-slate-500 group-hover:text-teal">
+                              {copiedHash === (tx.id || `TX_${idx}`) ? "✓" : "📋"}
+                            </span>
+                          </button>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <button
+                            onClick={() => {
+                              const other = tx.direction === "INCOMING" ? tx.sender : tx.receiver;
+                              if (onSelectAccount && other) onSelectAccount(other);
+                            }}
+                            className="text-slate-300 hover:text-white font-medium hover:underline text-[11px]"
+                          >
+                            {tx.direction === "INCOMING" ? tx.sender : tx.receiver}
+                          </button>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-white">
+                          ${Number(tx.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {tx.is_suspicious ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-flare/20 text-flare border border-flare/30">
+                              FLAGGED
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                              CLEAN
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-slate-500 font-mono text-xs">
+                        No transactions found for the specified criteria.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
