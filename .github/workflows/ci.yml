@@ -28,10 +28,12 @@ jobs:
       - name: Run Pytest Test Suite
         env:
           ENV: test
+          TESTING: "true"
           SEED_DATA: "false"
+          PYTHONPATH: .
         run: |
           cd backend
-          pytest tests/
+          pytest tests/ --maxfail=1 --disable-warnings
 
   build-frontend:
     name: Frontend Build (React + Vite)
