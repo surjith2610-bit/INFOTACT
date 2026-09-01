@@ -214,10 +214,28 @@ export default function Dashboard() {
   const topSuspiciousAccounts = useMemo(() => {
     if (!graphData || !graphData.nodes) return [];
     return [...graphData.nodes]
-      .map((n) => ({
-        id: n.id,
-        risk: n.risk !== undefined ? (n.risk > 1 ? n.risk : n.risk * 100) : 0,
-      }))
+      .map((n) => {
+        const rVal = n.risk !== undefined ? (n.risk > 1 ? n.risk : n.risk * 100) : 0;
+        const idU = (n.id || "").toUpperCase();
+        let role = n.role;
+        if (!role || role === "Flagged Suspect") {
+          if (idU.includes("SHELL")) role = "Smurfing Funnel Destination";
+          else if (idU.includes("CORP_VAULT")) role = "High-Volume Anomaly Sender";
+          else if (idU.includes("OFFSHORE_PRIV")) role = "Offshore Cashout Target";
+          else if (idU.includes("CIRCULAR")) role = "Cyclic Wash Trading Hub";
+          else if (idU.includes("SMURF")) role = "Smurfing Mule Account";
+          else if (rVal >= 70) role = "High-Risk Suspect Node";
+          else if (rVal >= 35) role = "Monitored Transfer Velocity";
+          else role = "Clean Verified Account";
+        }
+        return {
+          id: n.id,
+          name: n.name || n.id,
+          bank: n.bank || "Partner Bank",
+          risk: rVal,
+          role: role,
+        };
+      })
       .sort((a, b) => b.risk - a.risk)
       .slice(0, 6);
   }, [graphData]);
@@ -520,7 +538,7 @@ export default function Dashboard() {
                             {acc.id}
                           </div>
                           <div className="text-[10px] text-slate-400 font-sans">
-                            High Velocity Syndicate Hub
+                            {acc.role || "High Velocity Syndicate Hub"}
                           </div>
                         </div>
                       </div>
