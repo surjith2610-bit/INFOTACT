@@ -100,6 +100,17 @@ def on_startup():
         logger.warning(f"[BACKEND] Startup seed initialization warning: {e}")
 
 
+@app.get("/")
+def root_status():
+    return {
+        "status": "ok",
+        "service": settings.APP_NAME,
+        "message": "FinGraph Real-Time Streaming Fraud Syndicate Analytics API",
+        "version": "2.0.0",
+        "docs_url": "/docs"
+    }
+
+
 @app.get("/health")
 def health_check():
     return {

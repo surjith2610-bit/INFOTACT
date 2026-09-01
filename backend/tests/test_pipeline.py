@@ -17,6 +17,38 @@ from app.services.detection import (
 client = TestClient(app)
 
 
+def test_root():
+    """Verify root GET / returns 200 OK with platform status."""
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "service" in data
+
+
+def test_transactions():
+    """Verify GET /api/transactions returns a list of recent transactions."""
+    response = client.get("/api/transactions?limit=10")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+    tx = data[0]
+    assert "sender" in tx
+    assert "receiver" in tx
+    assert "amount" in tx
+
+
+def test_fraud_detection():
+    """Verify POST /api/run-detection executes and returns alert breakdown."""
+    response = client.post("/api/run-detection")
+    assert response.status_code == 200
+    data = response.json()
+    assert "alerts" in data
+    assert "alert_count" in data
+    assert data["alert_count"] >= 0
+
+
 def test_health_endpoint():
     """Verify GET /health returns 200 OK with expected payload."""
     response = client.get("/health")

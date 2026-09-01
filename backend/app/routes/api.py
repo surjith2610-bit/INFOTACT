@@ -783,6 +783,7 @@ async def get_graph(limit: int = 300):
 
 
 @router.post("/fraud/detect")
+@router.post("/run-detection")
 async def execute_fraud_detection():
     """Executes all fraud detection rules and updates graph alert state."""
     return run_all_detections()

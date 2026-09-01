@@ -16,10 +16,13 @@ class Neo4jConnection:
         self._last_failed_time = 0
 
     def get_driver(self):
+        if getattr(settings, "ENV", "").lower() in ["test", "testing"]:
+            return None
+
         if self._driver is not None:
             return self._driver
 
-        # Cooldown check: if failed recently, don't block API requests with 3s retries
+        # Cooldown check: if failed recently, don't block API requests with retries
         if time.time() - self._last_failed_time < 10.0:
             return None
 
