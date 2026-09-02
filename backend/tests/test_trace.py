@@ -80,3 +80,72 @@ def test_all_seven_fraud_detectors_execution():
     assert "amount_anomaly" in bd
     assert "fan_out" in bd
     assert "fan_in" in bd
+
+
+def test_api_account_transactions_endpoint():
+    """
+    Tests GET /api/account/{accountId}/transactions returning incoming/outgoing
+    with Indian bank details, IFSC, and channel.
+    """
+    response = client.get("/api/account/A101/transactions")
+    assert response.status_code == 200
+    data = response.json()
+    assert "account" in data
+    assert data["account"]["accountId"] == "A101"
+    assert "bank" in data["account"]
+    assert "branch" in data["account"]
+    assert "ifscCode" in data["account"]
+    assert "incoming" in data
+    assert "outgoing" in data
+    assert "total_volume" in data
+
+
+def test_api_trace_multihop_endpoint():
+    """
+    Tests GET /api/trace/{transactionId}?depth=5 returning multi-hop chain
+    traversal and AI money flow narrative.
+    """
+    response = client.get("/api/trace/TXN001?depth=3")
+    assert response.status_code == 200
+    data = response.json()
+    assert "rootTransactionId" in data
+    assert "chainHops" in data
+    assert "narrative" in data
+    assert "flowPath" in data["narrative"]
+    assert "nodes" in data
+    assert "edges" in data
+
+
+def test_api_flow_graph_endpoint():
+    """
+    Tests GET /api/flow/{accountId}?depth=3 returning strict { nodes, edges }
+    structure with bank and channel metadata.
+    """
+    response = client.get("/api/flow/A101?depth=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert "nodes" in data
+    assert "edges" in data
+    assert len(data["nodes"]) > 0
+    node = data["nodes"][0]
+    assert "id" in node
+    assert "bank" in node
+    assert "branch" in node
+    assert "ifscCode" in node
+
+
+def test_api_fraud_analyze_endpoint():
+    """
+    Tests GET /api/fraud/analyze/{accountId} running the 5 fraud rules
+    (Smurfing, Circular Flow, Burst, Layering, Structuring) with AI summary.
+    """
+    response = client.get("/api/fraud/analyze/SHELL_OFFSHORE_01")
+    assert response.status_code == 200
+    data = response.json()
+    assert "accountId" in data
+    assert "riskScore" in data
+    assert "riskLevel" in data
+    assert "suspiciousPatterns" in data
+    assert "aiSummary" in data
+    assert "riskAnalysis" in data["aiSummary"]
+

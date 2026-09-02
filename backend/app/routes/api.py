@@ -367,6 +367,298 @@ def _evaluate_suspicious_flags(txs: list) -> list:
     return processed
 
 
+# ============================================================================
+# 🎯 CORE SPECIFICATION: MANDATORY TRANSACTION TRACE & INTELLIGENCE APIS
+# ============================================================================
+
+@router.get("/account/{account_id}/transactions")
+async def get_account_transactions(account_id: str):
+    """
+    1. Account Transaction History
+    GET /api/account/:accountId/transactions
+    Returns full account identity details (Account ID, Holder Name, Bank Name, Branch, IFSC Code)
+    and all incoming + outgoing transactions with exact edge details.
+    """
+    # Cypher query with in-memory fallback
+    cypher = """
+    MATCH (a:Account)
+    WHERE a.id = $accId OR a.accountId = $accId
+    OPTIONAL MATCH (src:Account)-[in_t:TRANSFERRED_TO|TRANSFER]->(a)
+    OPTIONAL MATCH (a)-[out_t:TRANSFERRED_TO|TRANSFER]->(dst:Account)
+    RETURN
+      coalesce(a.id, a.accountId) AS account_id,
+      coalesce(a.name, 'Account ' + coalesce(a.id, a.accountId)) AS name,
+      coalesce(a.bank, 'State Bank of India') AS bank,
+      coalesce(a.branch, 'Central Branch') AS branch,
+      coalesce(a.ifscCode, a.ifsc, 'SBIN0001001') AS ifsc,
+      coalesce(a.riskScore, 0.0) AS risk_score,
+      collect(DISTINCT {
+        transactionId: coalesce(in_t.txId, in_t.transactionId, in_t.id, 'tx-in'),
+        from: coalesce(src.id, src.accountId),
+        fromName: coalesce(src.name, 'Account ' + coalesce(src.id, src.accountId)),
+        bankFrom: coalesce(src.bank, 'HDFC Bank'),
+        to: coalesce(a.id, a.accountId),
+        toName: coalesce(a.name, 'Account ' + coalesce(a.id, a.accountId)),
+        bankTo: coalesce(a.bank, 'State Bank of India'),
+        amount: in_t.amount,
+        timestamp: in_t.timestamp,
+        channel: coalesce(in_t.channel, 'UPI')
+      }) AS incoming,
+      collect(DISTINCT {
+        transactionId: coalesce(out_t.txId, out_t.transactionId, out_t.id, 'tx-out'),
+        from: coalesce(a.id, a.accountId),
+        fromName: coalesce(a.name, 'Account ' + coalesce(a.id, a.accountId)),
+        bankFrom: coalesce(a.bank, 'State Bank of India'),
+        to: coalesce(dst.id, dst.accountId),
+        toName: coalesce(dst.name, 'Account ' + coalesce(dst.id, dst.accountId)),
+        bankTo: coalesce(dst.bank, 'ICICI Bank'),
+        amount: out_t.amount,
+        timestamp: out_t.timestamp,
+        channel: coalesce(out_t.channel, 'IMPS')
+      }) AS outgoing
+    """
+    res = None
+    try:
+        res = neo4j_conn.run(cypher, {"accId": account_id})
+    except Exception as e:
+        logger.warning(f"Neo4j account transactions lookup exception: {e}")
+
+    if not res or not res[0] or not res[0].get("account_id"):
+        return memory_store.get_account_transactions(account_id)
+
+    row = res[0]
+    meta = memory_store.derive_account_meta(account_id, row.get("name"), row.get("bank"))
+    inc = [t for t in row.get("incoming", []) if t.get("from") and t.get("amount") is not None]
+    out = [t for t in row.get("outgoing", []) if t.get("to") and t.get("amount") is not None]
+
+    tot_in = sum(float(t.get("amount", 0.0) or 0.0) for t in inc)
+    tot_out = sum(float(t.get("amount", 0.0) or 0.0) for t in out)
+
+    return {
+        "account": {
+            "accountId": account_id,
+            "accountHolderName": meta["name"],
+            "name": meta["name"],
+            "bankName": meta["bank"],
+            "bank": meta["bank"],
+            "branch": meta["branch"],
+            "ifscCode": meta["ifscCode"],
+            "riskScore": float(row.get("risk_score") or memory_store.derive_risk_score(account_id)),
+        },
+        "incoming": inc,
+        "outgoing": out,
+        "incoming_transactions": inc,
+        "outgoing_transactions": out,
+        "total_incoming": round(tot_in, 2),
+        "total_outgoing": round(tot_out, 2),
+        "total_volume": round(tot_in + tot_out, 2),
+    }
+
+
+@router.get("/trace/{transaction_id}")
+async def get_multi_hop_trace(transaction_id: str, depth: int = 5):
+    """
+    2. Full Trace (Multi-Hop Flow)
+    GET /api/trace/:transactionId?depth=5
+    Traces multi-hop propagation chain: A → B → C → D → E.
+    Returns hops chain, connected nodes, edges, and AI Money Flow Narrative.
+    """
+    # Neo4j multi-hop path query if online
+    cypher = f"""
+    MATCH (s:Account)-[t:TRANSFERRED_TO|TRANSFER]->(r:Account)
+    WHERE coalesce(t.transactionId, t.txId) = $txId OR s.id = $txId OR s.accountId = $txId
+    OPTIONAL MATCH path = (s)-[:TRANSFERRED_TO|TRANSFER*1..{depth}]->(target:Account)
+    RETURN [n IN nodes(path) | coalesce(n.id, n.accountId)] AS nodeIds,
+           [rel IN relationships(path) | {{
+              transactionId: coalesce(rel.transactionId, rel.txId),
+              from: coalesce(startNode(rel).id, startNode(rel).accountId),
+              to: coalesce(endNode(rel).id, endNode(rel).accountId),
+              amount: rel.amount,
+              timestamp: rel.timestamp,
+              channel: coalesce(rel.channel, 'UPI')
+           }}] AS edgeList
+    LIMIT 10
+    """
+    try:
+        rows = neo4j_conn.run(cypher, {"txId": transaction_id})
+        if rows and len(rows) > 0 and rows[0].get("edgeList"):
+            # If path returned from Neo4j, format and return
+            edge_list = rows[0]["edgeList"]
+            if edge_list and len(edge_list) > 0:
+                nodes_out = []
+                seen_nodes = set()
+                edges_out = []
+                chain_hops = []
+                for idx, e in enumerate(edge_list):
+                    s_id = str(e["from"])
+                    t_id = str(e["to"])
+                    amt = float(e["amount"] or 0.0)
+                    ts = str(e.get("timestamp") or "")
+                    s_meta = memory_store.derive_account_meta(s_id)
+                    r_meta = memory_store.derive_account_meta(t_id)
+
+                    for n_id, n_m in [(s_id, s_meta), (t_id, r_meta)]:
+                        if n_id not in seen_nodes:
+                            seen_nodes.add(n_id)
+                            nodes_out.append({
+                                "id": n_id,
+                                "accountId": n_id,
+                                "name": n_m["name"],
+                                "bank": n_m["bank"],
+                                "branch": n_m["branch"],
+                                "ifsc": n_m["ifscCode"],
+                                "riskScore": memory_store.derive_risk_score(n_id),
+                            })
+                    edges_out.append({
+                        "transactionId": e.get("transactionId") or f"tx-hop-{idx}",
+                        "from": s_id,
+                        "to": t_id,
+                        "amount": amt,
+                        "timestamp": ts,
+                        "bankFrom": s_meta["bank"],
+                        "bankTo": r_meta["bank"],
+                        "channel": e.get("channel", "UPI"),
+                    })
+                    chain_hops.append({
+                        "hop": idx + 1,
+                        "from": s_id,
+                        "to": t_id,
+                        "amount": amt,
+                        "timestamp": ts,
+                        "transactionId": e.get("transactionId"),
+                        "channel": e.get("channel", "UPI"),
+                    })
+
+                origin = chain_hops[0]["from"]
+                dest = chain_hops[-1]["to"]
+                tot_vol = sum(h["amount"] for h in chain_hops)
+                origin_m = memory_store.derive_account_meta(origin)
+                dest_m = memory_store.derive_account_meta(dest)
+
+                return {
+                    "transactionId": transaction_id,
+                    "depth": depth,
+                    "hops": chain_hops,
+                    "nodes": nodes_out,
+                    "edges": edges_out,
+                    "narrative": {
+                        "origin": f"{origin} ({origin_m['name']}, {origin_m['bank']})",
+                        "destination": f"{dest} ({dest_m['name']}, {dest_m['bank']})",
+                        "totalHops": len(chain_hops),
+                        "totalVolume": round(tot_vol, 2),
+                        "flowPath": " → ".join([origin] + [h["to"] for h in chain_hops]),
+                        "summaryText": f"Funds originated at {origin_m['name']} ({origin_m['bank']}) and routed through {len(chain_hops)} hops to {dest_m['name']} ({dest_m['bank']}).",
+                    },
+                    "riskAnalysis": {
+                        "isSuspicious": len(chain_hops) >= 3 or tot_vol >= 10000,
+                        "riskLevel": "HIGH" if (len(chain_hops) >= 3 or tot_vol >= 10000) else "LOW",
+                        "reasons": ["Multi-hop fund transfer chain detected across distinct banking entities."],
+                    }
+                }
+    except Exception as e:
+        logger.warning(f"Neo4j trace exception: {e}")
+
+    # Fallback to high performance in-memory multi-hop trace
+    return memory_store.trace_transaction_chain(transaction_id, depth)
+
+
+@router.get("/flow/{account_id}")
+async def get_money_flow_graph(account_id: str, depth: int = 3):
+    """
+    3. Money Flow Graph
+    GET /api/flow/:accountId?depth=3
+    Returns strict node-edge graph format for visualization:
+    Node = Account, Edge = Transaction with bankFrom, bankTo, channel.
+    """
+    cypher = f"""
+    MATCH (center:Account)
+    WHERE center.id = $accId OR center.accountId = $accId
+    OPTIONAL MATCH path = (center)-[t:TRANSFERRED_TO|TRANSFER*1..{depth}]-(peer:Account)
+    UNWIND relationships(path) AS rel
+    WITH DISTINCT rel
+    RETURN
+      coalesce(rel.transactionId, rel.txId, 'tx') AS transactionId,
+      coalesce(startNode(rel).id, startNode(rel).accountId) AS from,
+      coalesce(startNode(rel).name, 'Account ' + coalesce(startNode(rel).id, startNode(rel).accountId)) AS senderName,
+      coalesce(startNode(rel).bank, 'State Bank of India') AS bankFrom,
+      coalesce(endNode(rel).id, endNode(rel).accountId) AS to,
+      coalesce(endNode(rel).name, 'Account ' + coalesce(endNode(rel).id, endNode(rel).accountId)) AS receiverName,
+      coalesce(endNode(rel).bank, 'ICICI Bank') AS bankTo,
+      rel.amount AS amount,
+      rel.timestamp AS timestamp,
+      coalesce(rel.channel, 'UPI') AS channel
+    """
+    try:
+        rows = neo4j_conn.run(cypher, {"accId": account_id})
+        if rows and len(rows) > 0 and rows[0].get("from"):
+            nodes_dict = {}
+            edges_out = []
+            for r in rows:
+                f_id = str(r["from"])
+                t_id = str(r["to"])
+                amt = float(r.get("amount", 0.0) or 0.0)
+                ts = str(r.get("timestamp") or "")
+                tx_id = str(r.get("transactionId") or "")
+                channel = str(r.get("channel") or "UPI")
+
+                f_meta = memory_store.derive_account_meta(f_id, r.get("senderName"), r.get("bankFrom"))
+                t_meta = memory_store.derive_account_meta(t_id, r.get("receiverName"), r.get("bankTo"))
+
+                if f_id not in nodes_dict:
+                    nodes_dict[f_id] = {
+                        "id": f_id,
+                        "name": f_meta["name"],
+                        "bank": f_meta["bank"],
+                        "branch": f_meta["branch"],
+                        "ifsc": f_meta["ifscCode"],
+                        "riskScore": memory_store.derive_risk_score(f_id),
+                    }
+                if t_id not in nodes_dict:
+                    nodes_dict[t_id] = {
+                        "id": t_id,
+                        "name": t_meta["name"],
+                        "bank": t_meta["bank"],
+                        "branch": t_meta["branch"],
+                        "ifsc": t_meta["ifscCode"],
+                        "riskScore": memory_store.derive_risk_score(t_id),
+                    }
+                edges_out.append({
+                    "transactionId": tx_id,
+                    "from": f_id,
+                    "to": t_id,
+                    "amount": amt,
+                    "timestamp": ts,
+                    "bankFrom": f_meta["bank"],
+                    "bankTo": t_meta["bank"],
+                    "channel": channel,
+                })
+            return {"nodes": list(nodes_dict.values()), "edges": edges_out}
+    except Exception as e:
+        logger.warning(f"Neo4j flow graph query exception: {e}")
+
+    return memory_store.get_flow_graph(account_id, depth)
+
+
+@router.get("/fraud/analyze/{account_id}")
+async def get_fraud_analysis_for_account(account_id: str):
+    """
+    4. Fraud Detection Engine
+    GET /api/fraud/analyze/:accountId
+    Returns risk score (0-100), risk level, and flags for:
+    - Smurfing (< ₹10,000 rapid splitting)
+    - Circular Flow (A → B → C → A)
+    - Burst Activity (5+ transfers in < 60 seconds)
+    - Layering Pattern (Multiple rapid hops)
+    - Structuring (Repeated identical amounts)
+    Includes AI Money Flow Narrative and reasoning.
+    """
+    return memory_store.analyze_fraud_for_account(account_id)
+
+
+# ============================================================================
+# COMPATIBILITY ALIASES
+# ============================================================================
+
 @router.get("/transactions/full-trace/{account_id}")
 async def get_full_transaction_trace(account_id: str):
     """

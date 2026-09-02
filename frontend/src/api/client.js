@@ -43,6 +43,14 @@ export const getErrorMessage = (err, defaultMsg = "An unexpected error occurred.
 export const fetchStats = () => api.get("/api/stats");
 export const fetchAccounts = (limit = 100) => api.get("/api/accounts", { params: { limit } });
 export const fetchTransactions = (limit = 100) => api.get("/api/transactions", { params: { limit } });
+
+// 🎯 Master Prompt 4 Core Endpoints:
+export const fetchAccountTransactions = (accountId) => api.get(`/api/account/${accountId}/transactions`);
+export const fetchMultiHopTrace = (transactionId, depth = 5) => api.get(`/api/trace/${transactionId}`, { params: { depth } });
+export const fetchMoneyFlowGraph = (accountId, depth = 3) => api.get(`/api/flow/${accountId}`, { params: { depth } });
+export const fetchFraudAnalysis = (accountId) => api.get(`/api/fraud/analyze/${accountId}`);
+
+// Compatibility & Legacy trace functions
 export const fetchTransactionTrace = (accountId, params = {}) =>
   api.get(`/api/transactions/trace/${accountId}`, { params });
 export const fetchFullTrace = (accountId) =>
