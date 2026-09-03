@@ -80,24 +80,24 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
     : 80;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-obsidian/80 backdrop-blur-md animate-fade-in font-sans">
-      <div className="w-full max-w-xl bg-panel border-l border-slate-700/80 shadow-2xl h-full flex flex-col overflow-hidden text-slate-100">
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-sm animate-fade-in font-sans">
+      <div className="w-full max-w-xl bg-white border-l border-slate-200 shadow-2xl h-full flex flex-col overflow-hidden text-slate-800">
         {/* Panel Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-obsidian/95">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <div className="flex items-center gap-3">
-            <span className="w-3 h-3 rounded-full bg-flare shadow-neon-flare animate-pulse" />
+            <span className="w-3 h-3 rounded-full bg-red-600 shadow-sm animate-pulse" />
             <div>
-              <h2 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+              <h2 className="text-lg font-bold tracking-tight text-slate-900 flex items-center gap-2">
                 Fraud Investigation Workbench
               </h2>
-              <p className="text-xs font-mono text-slate-400">
-                Target Entity: <span className="text-teal font-semibold">{alertId || accountId}</span>
+              <p className="text-xs font-mono text-slate-500">
+                Target Entity: <span className="text-blue-600 font-bold">{alertId || accountId}</span>
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition font-mono text-sm border border-transparent hover:border-slate-700"
+            className="text-slate-500 hover:text-slate-900 p-2 rounded-xl hover:bg-slate-200 transition font-mono text-sm border border-transparent"
           >
             ✕ Close
           </button>
@@ -105,8 +105,8 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
 
         {/* Panel Content Body */}
         {loading ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 font-mono text-sm">
-            <svg className="w-8 h-8 animate-spin text-teal" fill="none" viewBox="0 0 24 24">
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-500 font-mono text-sm">
+            <svg className="w-8 h-8 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
             </svg>
@@ -115,57 +115,57 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
         ) : detail ? (
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Risk Assessment KPI Meter */}
-            <div className="glass-card p-5 rounded-2xl border border-slate-800 flex items-center justify-between gap-4">
+            <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-4 shadow-sm">
               <div>
-                <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1">
+                <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1 font-bold">
                   Synthetic Risk Threat Assessment
                 </div>
-                <div className="text-2xl font-black text-white flex items-center gap-2">
-                  <span className={riskScore >= 70 ? "text-flare" : riskScore >= 40 ? "text-gold" : "text-emerald"}>
+                <div className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                  <span className={riskScore >= 70 ? "text-red-600" : riskScore >= 40 ? "text-amber-600" : "text-blue-600"}>
                     {riskScore}%
                   </span>
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-mono uppercase font-bold ${
                     riskScore >= 70
-                      ? "bg-flare/20 text-flare border border-flare/40"
-                      : "bg-gold/20 text-gold border border-gold/40"
+                      ? "bg-red-100 text-red-700 border border-red-200"
+                      : "bg-amber-100 text-amber-800 border border-amber-200"
                   }`}>
                     {detail.severity || "HIGH"} SEVERITY
                   </span>
                 </div>
-                <div className="text-xs text-slate-400 mt-1">
-                  Pattern Type: <span className="text-teal font-mono">{detail.type || "Syndicate Smurfing"}</span>
+                <div className="text-xs text-slate-600 mt-1">
+                  Pattern Type: <span className="text-blue-600 font-mono font-bold">{detail.type || "Syndicate Smurfing"}</span>
                 </div>
               </div>
 
               {/* Visual Radial Gauge Badge */}
-              <div className="relative w-20 h-20 flex items-center justify-center rounded-full bg-obsidian border-2 border-slate-700">
-                <div className={`text-center font-mono ${riskScore >= 70 ? "text-flare" : "text-gold"}`}>
+              <div className="relative w-20 h-20 flex items-center justify-center rounded-full bg-white border-2 border-slate-200 shadow-sm">
+                <div className={`text-center font-mono ${riskScore >= 70 ? "text-red-600" : "text-amber-600"}`}>
                   <div className="text-lg font-black">{riskScore}</div>
-                  <div className="text-[9px] text-slate-400">SCORE</div>
+                  <div className="text-[9px] text-slate-400 font-bold">SCORE</div>
                 </div>
               </div>
             </div>
 
             {/* Pattern Description */}
-            <div className="glass-card p-4 rounded-xl border border-slate-800">
-              <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 mb-2">
+            <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+              <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-800 mb-2">
                 Executive Pattern Summary
               </h3>
-              <p className="text-xs text-slate-300 leading-relaxed font-sans">
+              <p className="text-xs text-slate-600 leading-relaxed font-sans">
                 {detail.description || "Complex laundering topology involving multi-layered starburst distribution and cyclical routing."}
               </p>
             </div>
 
             {/* AI Multi-Hop Graph Explanations */}
             {detail.explanations && detail.explanations.length > 0 && (
-              <div className="glass-card p-4 rounded-xl border border-slate-800 space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center gap-2">
+              <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-sm">
+                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-800 flex items-center gap-2">
                   <span>🧠</span> AI Graph Engine Evidence Trace
                 </h3>
                 <div className="space-y-2">
                   {detail.explanations.map((exp, idx) => (
-                    <div key={idx} className="flex items-start gap-2 text-xs text-slate-300">
-                      <span className="text-teal font-mono">▸</span>
+                    <div key={idx} className="flex items-start gap-2 text-xs text-slate-700">
+                      <span className="text-blue-600 font-mono font-bold">▸</span>
                       <span className="font-sans leading-snug">{exp}</span>
                     </div>
                   ))}
@@ -176,19 +176,19 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
             {/* Connected Syndicate Accounts */}
             {detail.account_ids && detail.account_ids.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-800 flex items-center justify-between">
                   <span>Involved Syndicate Nodes ({detail.account_ids.length})</span>
-                  <span className="text-[10px] text-slate-400 font-sans">Click to copy</span>
+                  <span className="text-[10px] text-slate-500 font-sans">Click to copy</span>
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   {detail.account_ids.map((accId) => (
                     <button
                       key={accId}
                       onClick={() => copyToClipboard(accId)}
-                      className="p-2.5 rounded-lg bg-obsidian border border-slate-800 text-left font-mono text-xs text-slate-300 hover:border-teal/50 hover:text-white transition flex items-center justify-between group"
+                      className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-left font-mono text-xs text-slate-800 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition flex items-center justify-between group"
                     >
-                      <span className="truncate">{accId}</span>
-                      <span className="text-[10px] text-slate-500 group-hover:text-teal">
+                      <span className="truncate font-semibold">{accId}</span>
+                      <span className="text-[10px] text-slate-400 group-hover:text-blue-600">
                         {copiedId === accId ? "✓ Copied" : "Copy"}
                       </span>
                     </button>
@@ -198,25 +198,25 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
             )}
 
             {/* Analyst Disposition & Feedback Action Form */}
-            <div className="p-4 rounded-2xl bg-obsidian/90 border border-slate-800 space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-300 flex items-center gap-2">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-800 flex items-center gap-2">
                 <span>⚖️</span> Compliance Analyst Disposition
               </h3>
 
               {feedbackMsg && (
-                <div className="p-2.5 rounded-lg bg-teal/10 border border-teal/30 text-teal text-xs font-mono">
+                <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono font-semibold">
                   {feedbackMsg}
                 </div>
               )}
 
               <div className="space-y-2">
-                <label className="text-[11px] font-mono text-slate-400">Analyst Investigation Notes:</label>
+                <label className="text-[11px] font-mono text-slate-600 font-medium">Analyst Investigation Notes:</label>
                 <textarea
                   value={analystNotes}
                   onChange={(e) => setAnalystNotes(e.target.value)}
                   placeholder="Record multi-hop findings, law enforcement referral notes, or KYC verification details…"
                   rows={3}
-                  className="w-full bg-ink border border-slate-700/80 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-teal transition"
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-xs text-slate-900 placeholder-slate-400 font-mono focus:outline-none focus:border-blue-600 transition shadow-sm"
                 />
               </div>
 
@@ -224,21 +224,21 @@ export default function InvestigationPanel({ alertId, accountId, onClose, onStat
                 <button
                   onClick={() => handleAction("CONFIRMED_FRAUD")}
                   disabled={submitting}
-                  className="px-3 py-2 rounded-xl bg-flare hover:bg-flare-600 text-white font-mono text-xs font-bold shadow-neon-flare transition disabled:opacity-50"
+                  className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-mono text-xs font-bold shadow-sm transition disabled:opacity-50"
                 >
                   🚨 Confirm Fraud
                 </button>
                 <button
                   onClick={() => handleAction("ESCALATED")}
                   disabled={submitting}
-                  className="px-3 py-2 rounded-xl bg-gold hover:bg-yellow-500 text-obsidian font-mono text-xs font-bold shadow-gold transition disabled:opacity-50"
+                  className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-mono text-xs font-bold shadow-sm transition disabled:opacity-50"
                 >
                   ⚠️ Escalate Ring
                 </button>
                 <button
                   onClick={() => handleAction("DISMISSED_FALSE_POSITIVE")}
                   disabled={submitting}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs font-bold border border-slate-700 transition disabled:opacity-50"
+                  className="px-3 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-mono text-xs font-bold transition disabled:opacity-50"
                 >
                   ✅ Clear Benign
                 </button>

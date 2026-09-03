@@ -72,7 +72,7 @@ export default function GraphBackdrop() {
           const dx = a.x - b.x, dy = a.y - b.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < 150 * dpr) {
-            ctx.strokeStyle = `rgba(0, 242, 254, ${0.05 * (1 - dist / (150 * dpr))})`;
+            ctx.strokeStyle = `rgba(37, 99, 235, ${0.08 * (1 - dist / (150 * dpr))})`;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
@@ -84,7 +84,7 @@ export default function GraphBackdrop() {
       // Starburst flare
       if (burstTarget && burstTimer > 0) {
         const alpha = burstTimer / 140;
-        ctx.strokeStyle = `rgba(255, 56, 92, ${0.4 * alpha})`;
+        ctx.strokeStyle = `rgba(239, 68, 68, ${0.35 * alpha})`;
         for (const n of nodes) {
           if (n === burstTarget) continue;
           const dx = n.x - burstTarget.x, dy = n.y - burstTarget.y;
@@ -103,7 +103,7 @@ export default function GraphBackdrop() {
       for (const n of nodes) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, n.r * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = n.flagged ? "#FF385C" : "rgba(139, 155, 180, 0.4)";
+        ctx.fillStyle = n.flagged ? "#EF4444" : "rgba(37, 99, 235, 0.2)";
         ctx.fill();
       }
 
@@ -121,7 +121,7 @@ export default function GraphBackdrop() {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 w-full h-full opacity-60 pointer-events-none"
+      className="absolute inset-0 w-full h-full opacity-70 pointer-events-none"
       aria-hidden="true"
     />
   );

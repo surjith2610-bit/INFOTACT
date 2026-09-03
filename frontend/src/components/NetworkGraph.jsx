@@ -147,14 +147,14 @@ export default function NetworkGraph({
   // Node Color Logic
   const getNodeColor = useCallback(
     (node) => {
-      if (selectedNodeId === node.id) return "#00F2FE"; // Bright Neon Cyan
+      if (selectedNodeId === node.id) return "#1D4ED8"; // Deep Royal Blue Focus
       const m = nodeMetrics[node.id];
       const isFlagged = flaggedIds.has(node.id) || (m && m.isFraud);
       const risk = m ? m.risk : node.risk || 0;
 
-      if (isFlagged || risk >= 70) return "#FF385C"; // High-Risk Fraud Red
-      if (risk >= 35) return "#FBBF24";              // Suspicious Amber
-      return "#10B981";                              // Clean Emerald
+      if (isFlagged || risk >= 70) return "#EF4444"; // High-Risk Fraud Crimson
+      if (risk >= 35) return "#F59E0B";              // Suspicious Amber
+      return "#2563EB";                              // Clean Account Royal Blue
     },
     [flaggedIds, selectedNodeId, nodeMetrics]
   );
@@ -185,16 +185,16 @@ export default function NetworkGraph({
         ctx.beginPath();
         ctx.arc(node.x, node.y, pulseR1, 0, 2 * Math.PI);
         ctx.fillStyle = isSelected
-          ? `rgba(0, 242, 254, ${0.35 - pulseFactor * 0.2})`
-          : `rgba(255, 56, 92, ${0.4 - pulseFactor * 0.25})`;
+          ? `rgba(37, 99, 235, ${0.3 - pulseFactor * 0.15})`
+          : `rgba(239, 68, 68, ${0.35 - pulseFactor * 0.2})`;
         ctx.fill();
 
         // Outer wave 2 (wider halo)
         ctx.beginPath();
         ctx.arc(node.x, node.y, pulseR2, 0, 2 * Math.PI);
         ctx.fillStyle = isSelected
-          ? `rgba(0, 242, 254, ${0.15 - pulseFactor * 0.1})`
-          : `rgba(255, 56, 92, ${0.2 - pulseFactor * 0.15})`;
+          ? `rgba(37, 99, 235, ${0.15 - pulseFactor * 0.08})`
+          : `rgba(239, 68, 68, ${0.18 - pulseFactor * 0.1})`;
         ctx.fill();
         ctx.restore();
       }
@@ -205,11 +205,11 @@ export default function NetworkGraph({
       ctx.arc(node.x, node.y, baseR, 0, 2 * Math.PI);
       ctx.fillStyle = color;
       ctx.shadowColor = color;
-      ctx.shadowBlur = isFraud || isSelected ? 16 : 6;
+      ctx.shadowBlur = isFraud || isSelected ? 12 : 4;
       ctx.fill();
 
-      ctx.lineWidth = isSelected ? 2.5 : isFraud ? 2 : 1;
-      ctx.strokeStyle = isSelected ? "#FFFFFF" : isFraud ? "#FFE4E6" : "rgba(255, 255, 255, 0.7)";
+      ctx.lineWidth = isSelected ? 2.5 : isFraud ? 2 : 1.5;
+      ctx.strokeStyle = isSelected ? "#FFFFFF" : isFraud ? "#FEE2E2" : "#FFFFFF";
       ctx.stroke();
       ctx.restore();
 
@@ -258,9 +258,9 @@ export default function NetworkGraph({
         const boxY = node.y + baseR + 3;
 
         // Background pill
-        ctx.fillStyle = isFraud ? "rgba(20, 5, 8, 0.92)" : "rgba(7, 9, 14, 0.88)";
-        ctx.strokeStyle = isSelected ? "#00F2FE" : isFraud ? "#FF385C" : "rgba(255, 255, 255, 0.25)";
-        ctx.lineWidth = isFraud || isSelected ? 1.5 : 0.8;
+        ctx.fillStyle = isFraud ? "rgba(254, 242, 242, 0.96)" : "rgba(255, 255, 255, 0.96)";
+        ctx.strokeStyle = isSelected ? "#2563EB" : isFraud ? "#EF4444" : "rgba(148, 163, 184, 0.7)";
+        ctx.lineWidth = isFraud || isSelected ? 1.5 : 1;
 
         // Draw rounded rectangle
         ctx.beginPath();
@@ -274,14 +274,14 @@ export default function NetworkGraph({
         // Node ID Text
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillStyle = isSelected ? "#00F2FE" : isFraud ? "#FF8599" : "#E2E8F0";
+        ctx.fillStyle = isSelected ? "#1D4ED8" : isFraud ? "#DC2626" : "#0F172A";
         ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
         ctx.fillText(label, node.x, boxY + 2);
 
         // Subtitle Role / Fraud Tag
         if (isFraud) {
           ctx.font = `bold ${subFontSize}px 'JetBrains Mono', monospace`;
-          ctx.fillStyle = "#FFB800";
+          ctx.fillStyle = "#D97706";
           ctx.fillText(roleText, node.x, boxY + fontSize + 3);
         }
         ctx.restore();
@@ -307,15 +307,15 @@ export default function NetworkGraph({
       ctx.lineTo(tgt.x, tgt.y);
 
       if (isFraud) {
-        // Thick glowing crimson / neon flare line for fraud transactions
-        ctx.strokeStyle = amt >= 50000 ? "#FF0055" : "#FF385C";
+        // Thick bold crimson line for fraud transactions
+        ctx.strokeStyle = amt >= 50000 ? "#DC2626" : "#EF4444";
         ctx.lineWidth = isSelected ? 4.5 : Math.max(2.5, Math.min(5, 2.5 + Math.log10(amt / 1000)));
-        ctx.shadowColor = "#FF385C";
-        ctx.shadowBlur = 10;
+        ctx.shadowColor = "#EF4444";
+        ctx.shadowBlur = 8;
       } else {
-        // Subtle translucent line for clean transfers
-        ctx.strokeStyle = isSelected ? "rgba(0, 242, 254, 0.7)" : "rgba(71, 85, 105, 0.35)";
-        ctx.lineWidth = isSelected ? 2 : 1;
+        // Crisp subtle slate-blue line for clean transfers
+        ctx.strokeStyle = isSelected ? "rgba(37, 99, 235, 0.85)" : "rgba(148, 163, 184, 0.5)";
+        ctx.lineWidth = isSelected ? 2.5 : 1.2;
         ctx.shadowBlur = 0;
       }
       ctx.stroke();
@@ -340,7 +340,7 @@ export default function NetworkGraph({
         ctx.lineTo(-arrowSize * 1.5, -arrowSize);
         ctx.lineTo(-arrowSize * 1.5, arrowSize);
         ctx.closePath();
-        ctx.fillStyle = isFraud ? "#FF385C" : "rgba(148, 163, 184, 0.8)";
+        ctx.fillStyle = isFraud ? "#EF4444" : "rgba(71, 85, 105, 0.85)";
         ctx.fill();
         ctx.restore();
 
@@ -358,8 +358,8 @@ export default function NetworkGraph({
           const labelX = src.x + dx * 0.42;
           const labelY = src.y + dy * 0.42;
 
-          ctx.fillStyle = "rgba(10, 12, 18, 0.92)";
-          ctx.strokeStyle = isFraud ? "#FF385C" : "rgba(255, 255, 255, 0.2)";
+          ctx.fillStyle = isFraud ? "rgba(254, 242, 242, 0.95)" : "rgba(255, 255, 255, 0.95)";
+          ctx.strokeStyle = isFraud ? "#EF4444" : "rgba(148, 163, 184, 0.6)";
           ctx.lineWidth = 1;
 
           ctx.beginPath();
@@ -369,7 +369,7 @@ export default function NetworkGraph({
 
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillStyle = isFraud ? "#FFB800" : "#E2E8F0";
+          ctx.fillStyle = isFraud ? "#DC2626" : "#0F172A";
           ctx.fillText(badgeText, labelX, labelY);
           ctx.restore();
         }
@@ -379,12 +379,12 @@ export default function NetworkGraph({
   );
 
   return (
-    <div className="relative rounded-2xl overflow-hidden glass-panel border border-slate-800/80 shadow-2xl transition-all duration-300">
+    <div className="relative rounded-2xl overflow-hidden glass-panel border border-slate-200/90 shadow-xl transition-all duration-300">
       {/* REAL-TIME FRAUD SPOTLIGHT QUICK-FOCUS BANNER */}
-      <div className="bg-gradient-to-r from-red-950/90 via-obsidian/95 to-slate-900/90 border-b border-red-500/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+      <div className="bg-gradient-to-r from-red-50 via-white to-blue-50 border-b border-red-200/80 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-flare animate-ping" />
-          <span className="font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
+          <span className="font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
             <span>🚨</span> Verified Fraud Syndicates Detected:
           </span>
         </div>
@@ -393,7 +393,7 @@ export default function NetworkGraph({
         <div className="flex items-center gap-2">
           <button
             onClick={() => focusCluster(fraudSyndicates.smurfing.nodes, 2.3)}
-            className="px-3 py-1 rounded-lg bg-flare/20 hover:bg-flare text-white border border-flare/40 font-bold transition shadow-neon-flare flex items-center gap-1.5 group cursor-pointer"
+            className="px-3 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-bold transition shadow-sm flex items-center gap-1.5 group cursor-pointer"
             title="Focus Smurfing Starburst Ring (10 Mules -> 1 Offshore Shell)"
           >
             <span>💥</span>
@@ -402,7 +402,7 @@ export default function NetworkGraph({
 
           <button
             onClick={() => focusCluster(["CORP_VAULT_99", "OFFSHORE_PRIV_88"], 2.8)}
-            className="px-3 py-1 rounded-lg bg-gold/20 hover:bg-gold hover:text-obsidian text-gold border border-gold/40 font-bold transition flex items-center gap-1.5 group cursor-pointer"
+            className="px-3 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold transition flex items-center gap-1.5 group cursor-pointer"
             title="Focus $75,000 Offshore Vault Transfer"
           >
             <span>⚡</span>
@@ -411,7 +411,7 @@ export default function NetworkGraph({
 
           <button
             onClick={() => focusCluster(fraudSyndicates.circular.nodes, 2.5)}
-            className="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-400 hover:text-obsidian text-cyan-300 border border-cyan-400/40 font-bold transition flex items-center gap-1.5 group cursor-pointer"
+            className="px-3 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-bold transition flex items-center gap-1.5 group cursor-pointer"
             title="Focus Circular Money Routing Loop"
           >
             <span>🔄</span>
@@ -420,7 +420,7 @@ export default function NetworkGraph({
 
           <button
             onClick={() => fgRef.current?.zoomToFit(500, 30)}
-            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition"
+            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-[11px] transition"
             title="Reset to Full Graph View"
           >
             Reset View
@@ -431,13 +431,13 @@ export default function NetworkGraph({
       {/* Floating HUD Header / Filter Toolbar */}
       <div className="absolute top-14 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
         {/* Left: Quick Pattern Filter Chips */}
-        <div className="flex items-center gap-1.5 p-1.5 rounded-xl bg-obsidian/90 backdrop-blur-md border border-slate-800 pointer-events-auto shadow-xl">
+        <div className="flex items-center gap-1.5 p-1.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 pointer-events-auto shadow-md">
           <button
             onClick={() => setFilterMode("ALL")}
             className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
               filterMode === "ALL"
-                ? "bg-teal text-obsidian font-bold shadow-neon-teal"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+                ? "bg-blue-600 text-white font-bold shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             }`}
           >
             All Nodes ({graphData.nodes.length})
@@ -446,8 +446,8 @@ export default function NetworkGraph({
             onClick={() => setFilterMode("STARBURST")}
             className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all flex items-center gap-1.5 ${
               filterMode === "STARBURST"
-                ? "bg-teal text-obsidian font-bold shadow-neon-teal"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+                ? "bg-blue-600 text-white font-bold shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             }`}
           >
             <span>💥</span> Starburst Hubs
@@ -456,8 +456,8 @@ export default function NetworkGraph({
             onClick={() => setFilterMode("CIRCULAR")}
             className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all flex items-center gap-1.5 ${
               filterMode === "CIRCULAR"
-                ? "bg-teal text-obsidian font-bold shadow-neon-teal"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+                ? "bg-blue-600 text-white font-bold shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             }`}
           >
             <span>🔄</span> Circular Loops
@@ -466,8 +466,8 @@ export default function NetworkGraph({
             onClick={() => setFilterMode("HIGH_RISK")}
             className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all flex items-center gap-1.5 ${
               filterMode === "HIGH_RISK"
-                ? "bg-flare text-white font-bold shadow-neon-flare"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+                ? "bg-red-600 text-white font-bold shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             }`}
           >
             <span>🚨</span> High Risk
@@ -475,28 +475,28 @@ export default function NetworkGraph({
         </div>
 
         {/* Right: Interactive Camera Controls */}
-        <div className="flex items-center gap-2 p-1.5 rounded-xl bg-obsidian/90 backdrop-blur-md border border-slate-800 pointer-events-auto shadow-xl">
+        <div className="flex items-center gap-2 p-1.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 pointer-events-auto shadow-md">
           <button
             onClick={() => setEnableParticles((p) => !p)}
             className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5 ${
               enableParticles
-                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                : "text-slate-500 hover:text-slate-300"
+                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                : "text-slate-500 hover:text-slate-800"
             }`}
             title="Toggle Money Flow Particles"
           >
-            <span>{enableParticles ? "⚡ Particle Flow ON" : "⚪ Particles OFF"}</span>
+            <span>{enableParticles ? "⚡ Flow Stream ON" : "⚪ Flow OFF"}</span>
           </button>
           <button
             onClick={() => fgRef.current?.zoom(fgRef.current.zoom() * 1.35, 300)}
-            className="p-1.5 px-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 font-mono text-sm"
+            className="p-1.5 px-2.5 rounded-lg text-slate-700 hover:text-blue-600 hover:bg-slate-100 font-mono text-sm"
             title="Zoom In"
           >
             +
           </button>
           <button
             onClick={() => fgRef.current?.zoom(fgRef.current.zoom() / 1.35, 300)}
-            className="p-1.5 px-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 font-mono text-sm"
+            className="p-1.5 px-2.5 rounded-lg text-slate-700 hover:text-blue-600 hover:bg-slate-100 font-mono text-sm"
             title="Zoom Out"
           >
             −
@@ -505,13 +505,13 @@ export default function NetworkGraph({
       </div>
 
       {/* Force Graph Interactive Canvas */}
-      <div className="w-full relative bg-ink/90">
+      <div className="w-full relative bg-slate-50">
         <ForceGraph2D
           ref={fgRef}
           width={window.innerWidth > 1200 ? 1200 : window.innerWidth - 48}
           height={height}
           graphData={graphData}
-          backgroundColor="#07090E"
+          backgroundColor="#F8FAFC"
           nodeCanvasObject={drawNode}
           nodePointerAreaPaint={(node, color, ctx) => {
             ctx.fillStyle = color;
@@ -530,7 +530,7 @@ export default function NetworkGraph({
           }
           linkDirectionalParticleColor={(link) => {
             const isSuspicious = Number(link.amount) >= 9000 || link.is_fraud || link.is_suspicious;
-            return isSuspicious ? "#FF385C" : "#00F2FE";
+            return isSuspicious ? "#EF4444" : "#2563EB";
           }}
           onNodeHover={(node) => setHoveredNode(node || null)}
           onLinkHover={(link) => setHoveredLink(link || null)}
@@ -544,70 +544,70 @@ export default function NetworkGraph({
 
       {/* Dynamic Hover Tooltip HUD card */}
       {hoveredNode && (
-        <div className="absolute bottom-4 left-4 z-30 p-4 rounded-2xl bg-obsidian/95 backdrop-blur-md border border-slate-700/80 shadow-2xl font-mono text-xs max-w-sm animate-fade-in pointer-events-none">
+        <div className="absolute bottom-4 left-4 z-30 p-4 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl font-mono text-xs max-w-sm animate-fade-in pointer-events-none">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <span className="text-teal font-extrabold tracking-wide text-sm">{hoveredNode.id}</span>
+            <span className="text-blue-600 font-extrabold tracking-wide text-sm">{hoveredNode.id}</span>
             <span
               className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                 flaggedIds.has(hoveredNode.id) || (nodeMetrics[hoveredNode.id]?.risk >= 70)
-                  ? "bg-flare text-white shadow-neon-flare"
+                  ? "bg-red-50 text-red-700 border border-red-300"
                   : nodeMetrics[hoveredNode.id]?.risk >= 35
-                  ? "bg-gold/20 text-gold border border-gold/30"
-                  : "bg-emerald/20 text-emerald-400 border border-emerald/30"
+                  ? "bg-amber-50 text-amber-700 border border-amber-300"
+                  : "bg-blue-50 text-blue-700 border border-blue-200"
               }`}
             >
               Risk: {Math.round(nodeMetrics[hoveredNode.id]?.risk || 0)}%
             </span>
           </div>
 
-          <div className="space-y-1.5 text-slate-300 text-[11px]">
+          <div className="space-y-1.5 text-slate-700 text-[11px]">
             <div className="flex justify-between">
-              <span className="text-slate-400">Class Role:</span>
-              <span className="text-white font-bold">{nodeMetrics[hoveredNode.id]?.role || "Account Entity"}</span>
+              <span className="text-slate-500">Class Role:</span>
+              <span className="text-slate-900 font-bold">{nodeMetrics[hoveredNode.id]?.role || "Account Entity"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Inbound Transfers:</span>
-              <span className="text-emerald-400 font-semibold">{nodeMetrics[hoveredNode.id]?.inDegree || 0} incoming</span>
+              <span className="text-slate-500">Inbound Transfers:</span>
+              <span className="text-emerald-700 font-semibold">{nodeMetrics[hoveredNode.id]?.inDegree || 0} incoming</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Outbound Transfers:</span>
-              <span className="text-cyan-400 font-semibold">{nodeMetrics[hoveredNode.id]?.outDegree || 0} outgoing</span>
+              <span className="text-slate-500">Outbound Transfers:</span>
+              <span className="text-blue-700 font-semibold">{nodeMetrics[hoveredNode.id]?.outDegree || 0} outgoing</span>
             </div>
-            <div className="flex justify-between pt-1 border-t border-slate-800">
-              <span className="text-slate-400">Total Volume:</span>
-              <span className="text-teal font-bold">
+            <div className="flex justify-between pt-1 border-t border-slate-200">
+              <span className="text-slate-500">Total Volume:</span>
+              <span className="text-blue-700 font-bold">
                 ${(nodeMetrics[hoveredNode.id]?.totalAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </span>
             </div>
           </div>
 
-          <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] text-teal text-center font-sans font-semibold">
+          <div className="mt-2.5 pt-2 border-t border-slate-200 text-[10px] text-blue-600 text-center font-sans font-semibold">
             ⚡ Click node to open deep forensic investigation panel
           </div>
         </div>
       )}
 
       {/* Visual Graph Legend Footer */}
-      <div className="p-3.5 bg-obsidian/95 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
+      <div className="p-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 rounded-full bg-flare shadow-[0_0_12px_rgba(255,56,92,0.9)] animate-pulse" />
-            <span className="text-white font-bold">🚨 Flagged Fraud Syndicate (&gt;70%)</span>
+            <span className="w-3.5 h-3.5 rounded-full bg-flare shadow-sm" />
+            <span className="text-slate-800 font-bold">🚨 Flagged Fraud Syndicate (&gt;70%)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-gold shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
-            <span className="text-slate-300">⚠️ Suspicious Velocity (35-70%)</span>
+            <span className="w-3 h-3 rounded-full bg-gold shadow-sm" />
+            <span className="text-slate-700">⚠️ Suspicious Velocity (35-70%)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-            <span className="text-slate-300">🟢 Clean Account (&lt;30%)</span>
+            <span className="w-3 h-3 rounded-full bg-blue-600 shadow-sm" />
+            <span className="text-slate-700">🔵 Clean Account (&lt;30%)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3.5 h-1.5 bg-flare rounded shadow-neon-flare" />
-            <span className="text-slate-300">🔴 High-Risk Laundering Flow</span>
+            <span className="w-3.5 h-1.5 bg-flare rounded" />
+            <span className="text-slate-700">🔴 High-Risk Laundering Flow</span>
           </div>
         </div>
-        <div className="text-slate-400 text-[11px] font-sans">
+        <div className="text-slate-500 text-[11px] font-sans">
           ⚡ GPU Particle Acceleration Enabled • Live Cypher Graph
         </div>
       </div>
