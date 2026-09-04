@@ -26,13 +26,17 @@ class Settings(BaseSettings):
     DATA_PATH: str = "./data/sample_transactions.csv"
     SEED_DATA: bool = True
 
+    # --- Currency & Conversion ---
+    CURRENCY: str = "INR"
+    EXCHANGE_RATE: float = 83.0
+
     # --- Fraud Detection Rule Thresholds ---
     SMURFING_TRANSACTION_LIMIT: int = 5
     SMURFING_WINDOW_MINUTES: int = 60
     CIRCULAR_MAX_DEPTH: int = 3
     HIGH_FREQUENCY_COUNT: int = 10
     HIGH_FREQUENCY_WINDOW_MINUTES: int = 15
-    LARGE_TRANSACTION_THRESHOLD: float = 10000.0
+    LARGE_TRANSACTION_THRESHOLD: float = 830000.0  # ₹8,30,000 (~$10k SAR threshold * 83)
 
     # --- Frontend origin (CORS) ---
     FRONTEND_ORIGIN: str = "http://localhost:5173"

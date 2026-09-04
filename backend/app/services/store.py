@@ -831,36 +831,37 @@ class InMemoryStore:
         now = datetime.now(timezone.utc)
 
         # 1. PLANT FRAUD SYNDICATE 1: Smurfing Starburst Ring (10 mules funneled into SHELL_OFFSHORE_01)
+        # In USD: ~$9,850 each (under $10k SAR threshold). In INR: ~₹8,17,550 each (under ₹8.3L threshold).
         shell = "SHELL_OFFSHORE_01"
         for i in range(10):
             smurf = f"SMURF{i+1:03d}"
-            amt = 9850.00 - (i * 15.0)
+            amt = round((9850.00 - (i * 15.0)) * 83.0, 2)
             sample_rows.append({
                 "id": f"tx-smurf-{i+1:03d}",
                 "sender": smurf,
                 "receiver": shell,
-                "amount": round(amt, 2),
+                "amount": amt,
                 "timestamp": (now - timedelta(minutes=i * 4 + 5)).isoformat(),
                 "is_suspicious": True,
                 "pattern": "SMURFING_MULE"
             })
 
-        # 2. PLANT FRAUD SYNDICATE 2: Large Anomaly Threshold Breach ($75,000 Offshore Wire)
+        # 2. PLANT FRAUD SYNDICATE 2: Large Anomaly Threshold Breach ($75,000 * 83 = ₹62,25,000 Offshore Wire)
         sample_rows.append({
             "id": "tx-large-wire-999",
             "sender": "CORP_VAULT_99",
             "receiver": "OFFSHORE_PRIV_88",
-            "amount": 75000.00,
+            "amount": 6225000.00,
             "timestamp": (now - timedelta(minutes=2)).isoformat(),
             "is_suspicious": True,
             "pattern": "LARGE_CASHOUT"
         })
 
-        # 3. PLANT FRAUD SYNDICATE 3: Circular Routing Ring (Wash Transfers)
+        # 3. PLANT FRAUD SYNDICATE 3: Circular Routing Ring (Wash Transfers in INR)
         circular_txs = [
-            ("ACC0001", "CIRCULAR_HUB", 4500.00, 45),
-            ("CIRCULAR_HUB", "ACC0005", 4400.00, 30),
-            ("ACC0005", "ACC0001", 4300.00, 15),
+            ("ACC0001", "CIRCULAR_HUB", 373500.00, 45),
+            ("CIRCULAR_HUB", "ACC0005", 365200.00, 30),
+            ("ACC0005", "ACC0001", 356900.00, 15),
         ]
         for idx, (src, dst, amt, mins) in enumerate(circular_txs):
             sample_rows.append({
@@ -882,7 +883,7 @@ class InMemoryStore:
                 "id": f"tx-norm-{i+1:03d}",
                 "sender": sender,
                 "receiver": receiver,
-                "amount": round(80.0 + (i * 35.5) % 1200, 2),
+                "amount": round((80.0 + (i * 35.5) % 1200) * 83.0, 2),
                 "timestamp": (now - timedelta(minutes=i * 20 + 60)).isoformat(),
                 "is_suspicious": False,
                 "pattern": "NORMAL"
@@ -893,7 +894,7 @@ class InMemoryStore:
             "id": "TXN001",
             "sender": "A101",
             "receiver": "A202",
-            "amount": 5000.00,
+            "amount": 415000.00,
             "timestamp": (now - timedelta(hours=2)).isoformat(),
             "is_suspicious": False,
             "pattern": "NORMAL"
@@ -909,13 +910,13 @@ class InMemoryStore:
             "severity": "CRITICAL",
             "risk_score": 96.5,
             "fraud_probability": 0.965,
-            "description": "Smurfing Starburst Funnel: Account SHELL_OFFSHORE_01 received 10 structured deposits of ₹9,850 (totaling ₹98,500.00) from distinct mule accounts sharing IP 185.220.101.7.",
+            "description": "Smurfing Starburst Funnel: Account SHELL_OFFSHORE_01 received 10 structured deposits of ₹8,17,550 (totaling ₹81,75,500.00 / ₹81.8L) from distinct mule accounts sharing IP 185.220.101.7.",
             "account_ids": ["SHELL_OFFSHORE_01"] + [f"SMURF{i+1:03d}" for i in range(10)],
             "transaction_ids": [f"tx-smurf-{i+1:03d}" for i in range(10)],
             "createdAt": (now - timedelta(minutes=5)).isoformat(),
             "status": "PENDING",
             "explanations": [
-                "10 separate inbound transfers clustered precisely below the ₹10,000 regulatory threshold.",
+                "10 separate inbound transfers clustered precisely below the ₹8,30,000 regulatory threshold.",
                 "Target entity SHELL_OFFSHORE_01 has 100% inbound velocity with no prior commercial history.",
                 "Shared originating IP subnet (185.220.101.7) detected across all 10 sender mules.",
                 "ML Isolation Forest graph anomaly score: -0.92 (High Anomaly Confidence)."
@@ -929,13 +930,13 @@ class InMemoryStore:
             "severity": "HIGH",
             "risk_score": 93.0,
             "fraud_probability": 0.930,
-            "description": "Threshold Breach: Anomalous high-value transfer of ₹75,000.00 detected from CORP_VAULT_99 to unverified offshore entity OFFSHORE_PRIV_88.",
+            "description": "Threshold Breach: Anomalous high-value transfer of ₹62,25,000.00 (₹62.25L) detected from CORP_VAULT_99 to unverified offshore entity OFFSHORE_PRIV_88.",
             "account_ids": ["CORP_VAULT_99", "OFFSHORE_PRIV_88"],
             "transaction_ids": ["tx-large-wire-999"],
             "createdAt": (now - timedelta(minutes=2)).isoformat(),
             "status": "PENDING",
             "explanations": [
-                "Single transfer of ₹75,000.00 exceeds standard daily limit by 750%.",
+                "Single transfer of ₹62,25,000.00 exceeds standard daily limit (₹8,30,000) by 750%.",
                 "Destination entity OFFSHORE_PRIV_88 registered in high-risk offshore jurisdiction.",
                 "Instant liquidity drain from corporate vault account."
             ]
@@ -948,7 +949,7 @@ class InMemoryStore:
             "severity": "HIGH",
             "risk_score": 89.0,
             "fraud_probability": 0.890,
-            "description": "Circular Laundering Loop: Multi-hop cycle detected ACC0001 -> CIRCULAR_HUB -> ACC0005 -> ACC0001 totaling ₹13,200.00.",
+            "description": "Circular Laundering Loop: Multi-hop cycle detected ACC0001 -> CIRCULAR_HUB -> ACC0005 -> ACC0001 totaling ₹10,95,600.00.",
             "account_ids": ["ACC0001", "CIRCULAR_HUB", "ACC0005"],
             "transaction_ids": ["tx-circ-loop-1", "tx-circ-loop-2", "tx-circ-loop-3"],
             "createdAt": (now - timedelta(minutes=15)).isoformat(),

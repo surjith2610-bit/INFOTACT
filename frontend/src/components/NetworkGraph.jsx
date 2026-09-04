@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import ForceGraph2D from "react-force-graph-2d";
+import { formatINR, formatCompactINR } from "../utils/currency.js";
 
 export default function NetworkGraph({
   data,
@@ -60,7 +61,7 @@ export default function NetworkGraph({
     // Detect explicit fraud syndicate clusters for quick 1-click camera focus
     const syndicates = {
       smurfing: { hub: "SHELL_OFFSHORE_01", nodes: [], totalAmount: 0 },
-      largeWire: { hub: "OFFSHORE_PRIV_88", source: "CORP_VAULT_99", amount: 75000 },
+      largeWire: { hub: "OFFSHORE_PRIV_88", source: "CORP_VAULT_99", amount: 6225000 },
       circular: { nodes: ["ACC0001", "CIRCULAR_HUB", "ACC0005"] },
     };
 
@@ -347,8 +348,8 @@ export default function NetworkGraph({
         // Draw Floating Amount Badge on Canvas for Fraud Transactions
         if (isFraud || globalScale > 1.8) {
           ctx.save();
-          const amtText = amt >= 1000 ? `$${(amt / 1000).toFixed(1)}k` : `$${amt.toFixed(0)}`;
-          const badgeText = amt >= 10000 ? `🚨 $${amt.toLocaleString()}` : `⚡ ${amtText}`;
+          const amtText = formatCompactINR(amt);
+          const badgeText = isFraud ? `🚨 ${amtText}` : `⚡ ${amtText}`;
           const amtFontSize = Math.max(8.5 / globalScale, 3.8);
 
           ctx.font = `bold ${amtFontSize}px 'JetBrains Mono', monospace`;
@@ -397,16 +398,16 @@ export default function NetworkGraph({
             title="Focus Smurfing Starburst Ring (10 Mules -> 1 Offshore Shell)"
           >
             <span>💥</span>
-            <span>Focus Smurfing Starburst ($98.5k)</span>
+            <span>Focus Smurfing Starburst (₹81.8L)</span>
           </button>
 
           <button
             onClick={() => focusCluster(["CORP_VAULT_99", "OFFSHORE_PRIV_88"], 2.8)}
             className="px-3 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold transition flex items-center gap-1.5 group cursor-pointer"
-            title="Focus $75,000 Offshore Vault Transfer"
+            title="Focus ₹62,25,000 Offshore Vault Transfer"
           >
             <span>⚡</span>
-            <span>Focus $75k Offshore Wire</span>
+            <span>Focus ₹62.25L Offshore Wire</span>
           </button>
 
           <button
@@ -576,7 +577,7 @@ export default function NetworkGraph({
             <div className="flex justify-between pt-1 border-t border-slate-200">
               <span className="text-slate-500">Total Volume:</span>
               <span className="text-blue-700 font-bold">
-                ${(nodeMetrics[hoveredNode.id]?.totalAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {formatINR(nodeMetrics[hoveredNode.id]?.totalAmount || 0)}
               </span>
             </div>
           </div>

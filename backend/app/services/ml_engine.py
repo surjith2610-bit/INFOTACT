@@ -31,16 +31,17 @@ class FraudMLEngine:
             return
 
         # Feature vector: [amount, sender_velocity, receiver_velocity, amount_ratio, graph_degree]
-        normal_samples = np.random.normal(loc=[500, 2, 2, 1.0, 3], scale=[300, 1, 1, 0.3, 1.5], size=(200, 5))
+        # Baseline normalized to INR amounts (~₹40,000 normal mean)
+        normal_samples = np.random.normal(loc=[40000, 2, 2, 1.0, 3], scale=[25000, 1, 1, 0.3, 1.5], size=(200, 5))
         normal_samples = np.clip(normal_samples, a_min=0, a_max=None)
         
-        # Plant fraud outliers
+        # Plant fraud outliers in INR (e.g., ₹12.5L, ₹8.13L smurfing mules, ₹40L large transfer)
         fraud_samples = np.array([
-            [15000, 15, 1, 8.5, 12],
-            [9800, 22, 18, 5.2, 15],
-            [48000, 1, 1, 15.0, 2],
-            [9900, 12, 12, 4.0, 10],
-            [12000, 18, 2, 7.0, 14],
+            [1245000, 15, 1, 8.5, 12],
+            [813400, 22, 18, 5.2, 15],
+            [3984000, 1, 1, 15.0, 2],
+            [821700, 12, 12, 4.0, 10],
+            [996000, 18, 2, 7.0, 14],
         ])
         
         X_train = np.vstack([normal_samples, fraud_samples])
@@ -56,7 +57,7 @@ class FraudMLEngine:
         amount: float,
         sender_velocity: int,
         receiver_velocity: int,
-        historical_avg: float = 500.0,
+        historical_avg: float = 40000.0,
         sender_degree: int = 2,
         receiver_degree: int = 2,
     ) -> np.ndarray:
@@ -74,7 +75,7 @@ class FraudMLEngine:
             amount = features[0][0]
             velocity = max(features[0][1], features[0][2])
             ratio = features[0][3]
-            raw = (amount / 10000.0) * 10 + velocity * 1.5 + ratio * 2.0
+            raw = (amount / 830000.0) * 10 + velocity * 1.5 + ratio * 2.0
             score_25 = min(25.0, raw)
             prob = min(0.99, score_25 / 25.0)
             return score_25, prob
@@ -83,7 +84,6 @@ class FraudMLEngine:
             # decision_function returns negative values for anomalies, positive for normal
             dec_score = float(self.model.decision_function(features)[0])
             # Normalize decision_score to 0..25 range (lower dec_score = higher anomaly)
-            # dec_score usually ranges between -0.3 (extreme outlier) and +0.2 (very normal)
             anomaly_intensity = max(0.0, -dec_score + 0.15)
             ml_score = min(25.0, anomaly_intensity * 50.0)
             
@@ -101,7 +101,7 @@ class FraudMLEngine:
         receiver_velocity: int = 1,
         sender_degree: int = 1,
         receiver_degree: int = 1,
-        historical_avg: float = 450.0,
+        historical_avg: float = 37350.0,
         has_shared_ip: bool = False,
         is_circular: bool = False,
     ) -> Dict[str, Any]:
@@ -125,19 +125,21 @@ class FraudMLEngine:
         else:
             vel_score = max_vel * 2.0
 
-        # 2. Amount Anomaly Score (0 - 25 points)
+        # 2. Amount Anomaly Score (0 - 25 points) - INR & USD Scale
         amount_ratio = amount / max(1.0, historical_avg)
-        if amount >= 10000.0:
+        large_thresh = 830000.0  # ₹8.3 Lakhs threshold
+        
+        if amount >= large_thresh or amount >= 10000.0 or amount_ratio >= 10.0:
             amount_score = 25.0
-            explanations.append(f"Large transaction threshold breached (₹{amount:,.2f} >= ₹10,000) (+25 pts)")
+            explanations.append(f"Large transaction threshold breached (₹{amount:,.2f}) (+25 pts)")
+        elif (large_thresh * 0.9 <= amount < large_thresh) or (9000.0 <= amount < 10000.0):
+            amount_score = 22.0
+            explanations.append(f"Smurfing amount pattern detected (₹{amount:,.2f} just under limit) (+22 pts)")
         elif amount_ratio >= 5.0:
             amount_score = 20.0
             explanations.append(f"Amount anomaly: ₹{amount:,.2f} is {amount_ratio:.1f}x higher than baseline (+20 pts)")
-        elif amount >= 9000.0 and amount < 10000.0:
-            amount_score = 22.0
-            explanations.append(f"Smurfing amount pattern detected (₹{amount:,.2f} just under ₹10,000 limit) (+22 pts)")
         else:
-            amount_score = min(15.0, (amount / 1000.0) * 1.5)
+            amount_score = min(15.0, (amount / 83000.0) * 1.5)
 
         # 3. Graph Centrality & Topology Score (0 - 25 points)
         max_degree = max(sender_degree, receiver_degree)

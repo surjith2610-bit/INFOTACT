@@ -8,6 +8,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Depends
 from pydantic import BaseModel, EmailStr
 
+from app.config import settings
 from app.database import neo4j_conn
 from app.services.kafka_producer import publish_transaction
 from app.services.store import memory_store
@@ -327,8 +328,12 @@ def _evaluate_suspicious_flags(txs: list) -> list:
         sender_id = tx.get("from_account") or tx.get("sender_account") or tx.get("sender") or ""
         receiver_id = tx.get("to_account") or tx.get("receiver_account") or tx.get("receiver") or ""
         
-        is_smurfing = 9000 <= amt < 10000
-        is_large = amt >= 10000
+        rate = float(getattr(settings, "EXCHANGE_RATE", 83.0))
+        large_thresh = float(getattr(settings, "LARGE_TRANSACTION_THRESHOLD", 830000.0))
+        smurf_lower = large_thresh * 0.90
+        
+        is_smurfing = (smurf_lower <= amt < large_thresh) or (9000 <= amt < 10000)
+        is_large = amt >= large_thresh
         
         key = f"{sender_id}->{receiver_id}"
         if key not in sender_ts_map:
@@ -340,7 +345,7 @@ def _evaluate_suspicious_flags(txs: list) -> list:
         
         reasons = []
         if is_smurfing:
-            reasons.append("Smurfing / Structuring Pattern (< ₹10,000 threshold)")
+            reasons.append(f"Smurfing / Structuring Pattern (< ₹{large_thresh:,.0f} threshold)")
         if is_velocity:
             reasons.append("High Frequency Repeated Transfer")
         if is_large:
@@ -1131,24 +1136,36 @@ async def upload_csv(file: UploadFile = File(...)):
     }
 
 
+@router.get("/config")
+async def get_system_config():
+    """Returns currency and exchange rate configuration for UI."""
+    return {
+        "currency": getattr(settings, "CURRENCY", "INR"),
+        "exchange_rate": float(getattr(settings, "EXCHANGE_RATE", 83.0)),
+        "large_transaction_threshold": float(getattr(settings, "LARGE_TRANSACTION_THRESHOLD", 830000.0)),
+    }
+
+
 @router.post("/data/generate")
 async def generate_synthetic(
     normal_accounts: int = 40,
     normal_transactions: int = 150,
     inject_smurfing_ring: bool = True,
 ):
-    """Generates synthetic dataset with optional planted smurfing syndicate."""
+    """Generates synthetic dataset with optional planted smurfing syndicate scaled to configured currency."""
     rows = []
     accounts = [f"ACC{i:04d}" for i in range(normal_accounts)]
+    rate = float(getattr(settings, "EXCHANGE_RATE", 83.0))
 
     for _ in range(normal_transactions):
         sender, receiver = random.sample(accounts, 2)
+        # Normal retail transfers (e.g., ₹1,500 to ₹3,50,000)
         rows.append(
             {
                 "transaction_id": f"tx-gen-{uuid.uuid4().hex[:8]}",
                 "sender_account": sender,
                 "receiver_account": receiver,
-                "amount": round(random.uniform(20.0, 4800.0), 2),
+                "amount": round(random.uniform(20.0, 4200.0) * rate, 2),
                 "timestamp": (
                     datetime.now(timezone.utc) - timedelta(minutes=random.randint(1, 1440))
                 ).isoformat(),
@@ -1162,12 +1179,13 @@ async def generate_synthetic(
         smurf_senders = [f"SMURF{i:03d}" for i in range(12)]
         shared_ip = "185.220.101.7"
         for sender in smurf_senders:
+            # Smurfing transfers (~₹7,88,500 to ₹8,25,850, clustered just below ₹8.3L SAR threshold)
             rows.append(
                 {
                     "transaction_id": f"tx-smurf-{uuid.uuid4().hex[:8]}",
                     "sender_account": sender,
                     "receiver_account": shell_account,
-                    "amount": round(random.uniform(9500.0, 9950.0), 2),
+                    "amount": round(random.uniform(9500.0, 9950.0) * rate, 2),
                     "timestamp": (
                         datetime.now(timezone.utc) - timedelta(minutes=random.randint(1, 60))
                     ).isoformat(),
@@ -1183,6 +1201,6 @@ async def generate_synthetic(
     run_all_detections()
 
     return {
-        "message": f"Generated {inserted} synthetic transactions with planted syndicate ring.",
+        "message": f"Generated {inserted} synthetic transactions with planted syndicate ring (Currency: {getattr(settings, 'CURRENCY', 'INR')}).",
         "rows": inserted,
     }

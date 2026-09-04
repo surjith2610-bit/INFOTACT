@@ -198,9 +198,11 @@ def detect_smurfing(
             receiver_degree=len(all_accounts),
             has_shared_ip=(distinct_ips > 0 and distinct_ips <= 2),
         )
+        rule_sev = "HIGH" if distinct_ips <= 2 or sender_count >= 8 else "MEDIUM"
+        final_sev = "CRITICAL" if ai_risk["risk_level"] == "CRITICAL" else rule_sev
         alert_dict = create_fraud_alert(
             alert_type="SMURFING_STRUCTURING",
-            severity=ai_risk["risk_level"],
+            severity=final_sev,
             description=desc,
             account_ids=all_accounts,
             transaction_ids=tx_ids,

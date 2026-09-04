@@ -59,12 +59,13 @@ def convert_and_enrich_dataset(
     input_csv_path: str,
     output_csv_path: str,
     target_min_rows: int = 1000,
-    inject_fraud: bool = True
+    inject_fraud: bool = True,
+    exchange_rate: float = 83.0,
 ) -> pd.DataFrame:
     """
     Reads order CSV, intelligently maps columns to transaction schema,
-    enriches with synthetic fraud patterns, and outputs clean CSV with columns:
-    sender_account, receiver_account, amount, timestamp
+    enriches with synthetic fraud patterns, converts currency to INR using exchange_rate (default 83.0),
+    and outputs clean CSV with columns: sender_account, receiver_account, amount, timestamp
     """
     if not os.path.exists(input_csv_path):
         print(f"[CONVERTER] Input file {input_csv_path} not found. Generating sample input CSV...")
@@ -88,11 +89,11 @@ def convert_and_enrich_dataset(
         raw_price = row.get("sale_price") or row.get("amount") or 100.0
         try:
             val_str = str(raw_price).replace("₹", "").replace("$", "").replace(",", "").strip()
-            amount = round(float(val_str), 2)
+            amount = round(float(val_str) * (exchange_rate if "$" in str(raw_price) or float(val_str) < 5000 else 1.0), 2)
             if amount <= 0:
-                amount = 50.0
+                amount = 4150.0
         except (ValueError, TypeError):
-            amount = 50.0
+            amount = 4150.0
 
         # Timestamp
         ts_val = str(row.get("timestamp") or datetime.now(timezone.utc).isoformat()).strip()
@@ -105,12 +106,12 @@ def convert_and_enrich_dataset(
         })
 
     tx_df = pd.DataFrame(mapped_rows)
-    print(f"[CONVERTER] Converted {len(tx_df)} rows from order schema to transaction schema.")
+    print(f"[CONVERTER] Converted {len(tx_df)} rows from order schema to transaction schema (INR scale).")
 
     # 2. Enrich with synthetic rows if total < target_min_rows or fraud injection requested
     rows_needed = max(0, target_min_rows - len(tx_df))
     if rows_needed > 0 or inject_fraud:
-        print(f"[CONVERTER] Enriching dataset to {target_min_rows}+ rows with realistic fraud patterns...")
+        print(f"[CONVERTER] Enriching dataset to {target_min_rows}+ rows with realistic fraud patterns (INR scale)...")
         synthetic_rows = []
         base_time = datetime.now(timezone.utc) - timedelta(days=2)
 
@@ -123,7 +124,7 @@ def convert_and_enrich_dataset(
         for _ in range(num_normal):
             s = random.choice(normal_senders)
             r = random.choice(normal_receivers)
-            amt = round(random.uniform(12.50, 4500.00), 2)
+            amt = round(random.uniform(12.50, 4500.00) * exchange_rate, 2)
             ts = (base_time + timedelta(minutes=random.randint(0, 2880))).isoformat()
             synthetic_rows.append({
                 "sender_account": s,
@@ -133,7 +134,7 @@ def convert_and_enrich_dataset(
             })
 
         # --- Pattern B: Smurfing / Starburst Ring (~15% of synthetic additions) ---
-        # Multiple smurf accounts sending small amounts under $10,000 threshold to one shell receiver
+        # Multiple smurf accounts sending small amounts under ₹8,30,000 ($10k) threshold to one shell receiver
         num_smurf_tx = int(rows_needed * 0.15) if rows_needed > 0 else 150
         target_shell = "ACC_SHELL01"
         smurf_accounts = [f"ACC_SMURF{i:03d}" for i in range(1, 21)]
@@ -141,7 +142,7 @@ def convert_and_enrich_dataset(
 
         for i in range(num_smurf_tx):
             smurf_sender = smurf_accounts[i % len(smurf_accounts)]
-            smurf_amt = round(random.uniform(8900.00, 9950.00), 2) # just under $10k SAR threshold
+            smurf_amt = round(random.uniform(8900.00, 9950.00) * exchange_rate, 2) # just under ₹8.3L SAR threshold
             smurf_ts = (smurf_start_time + timedelta(seconds=i * 45)).isoformat()
             synthetic_rows.append({
                 "sender_account": smurf_sender,
@@ -155,7 +156,7 @@ def convert_and_enrich_dataset(
         for i in range(num_large):
             s = random.choice(normal_senders)
             r = random.choice(normal_receivers)
-            large_amt = round(random.uniform(55000.00, 250000.00), 2)
+            large_amt = round(random.uniform(55000.00, 250000.00) * exchange_rate, 2)
             large_ts = (base_time + timedelta(hours=random.randint(1, 48))).isoformat()
             synthetic_rows.append({
                 "sender_account": s,
@@ -168,19 +169,19 @@ def convert_and_enrich_dataset(
         # Loop: ACC_LOOP01 -> ACC_LOOP02 -> ACC_LOOP03 -> ACC_LOOP01
         loop_accounts = ["ACC_LOOP01", "ACC_LOOP02", "ACC_LOOP03"]
         loop_start_time = base_time + timedelta(hours=20)
-        num_loops = max(5, int((rows_needed * 0.05) / 3))
-        for l_idx in range(num_loops):
-            loop_amt = round(random.uniform(42000.00, 48000.00), 2)
-            for hop in range(3):
-                s_acc = loop_accounts[hop]
-                r_acc = loop_accounts[(hop + 1) % 3]
-                l_ts = (loop_start_time + timedelta(hours=l_idx*2, minutes=hop*10)).isoformat()
-                synthetic_rows.append({
-                    "sender_account": s_acc,
-                    "receiver_account": r_acc,
-                    "amount": loop_amt,
-                    "timestamp": l_ts
-                })
+        num_loops = max(10, int(rows_needed * 0.05)) if rows_needed > 0 else 30
+        for i in range(num_loops):
+            step = i % 3
+            src = loop_accounts[step]
+            dst = loop_accounts[(step + 1) % 3]
+            loop_amt = round((12000.00 - (step * 250.0)) * exchange_rate, 2)
+            loop_ts = (loop_start_time + timedelta(minutes=i * 15)).isoformat()
+            synthetic_rows.append({
+                "sender_account": src,
+                "receiver_account": dst,
+                "amount": loop_amt,
+                "timestamp": loop_ts
+            })
 
         synth_df = pd.DataFrame(synthetic_rows)
         tx_df = pd.concat([tx_df, synth_df], ignore_index=True)

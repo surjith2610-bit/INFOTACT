@@ -16,6 +16,7 @@ import {
   getErrorMessage,
   fetchCurrentUser,
 } from "../api/client.js";
+import { formatCurrency, formatINR, formatCompactINR } from "../utils/currency.js";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("analytics"); // "analytics" | "trace" | "alerts" | "transactions"
@@ -37,7 +38,8 @@ export default function Dashboard() {
   const [toastNotification, setToastNotification] = useState(null);
   const [themeMode, setThemeMode] = useState("light"); // "light" | "dark"
 
-  // Filter states
+  // Filter states & Currency selection
+  const [currency, setCurrency] = useState("INR"); // "INR" | "USD"
   const [alertSeverityFilter, setAlertSeverityFilter] = useState("ALL");
   const [alertSearchQuery, setAlertSearchQuery] = useState("");
   const [txSearchQuery, setTxSearchQuery] = useState("");
@@ -363,6 +365,20 @@ export default function Dashboard() {
               <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-blue-600 animate-ping" : "bg-amber-500"}`} />
               <span>{wsConnected ? "⚡ WebSocket 60fps" : "Polling Mode (5s)"}</span>
             </div>
+
+            {/* Currency Toggle Switch (USD ⇄ INR) */}
+            <button
+              onClick={() => setCurrency((c) => (c === "INR" ? "USD" : "INR"))}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                currency === "INR"
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                  : "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+              }`}
+              title="Toggle Display Currency (USD ⇄ INR)"
+            >
+              <span>{currency === "INR" ? "🇮🇳 ₹ INR" : "🇺🇸 $ USD"}</span>
+              <span className="text-[10px] text-slate-500 font-normal underline ml-0.5">⇄</span>
+            </button>
 
             {/* Dark / Light Mode Switcher */}
             <button
@@ -735,7 +751,7 @@ export default function Dashboard() {
                     <th className="py-3 px-4">Transaction ID</th>
                     <th className="py-3 px-4">Sender Account</th>
                     <th className="py-3 px-4">Receiver Account</th>
-                    <th className="py-3 px-4 text-right">Amount</th>
+                    <th className="py-3 px-4 text-right">Amount ({currency === "INR" ? "₹" : "$"})</th>
                     <th className="py-3 px-4 text-center">Timestamp</th>
                     <th className="py-3 px-4 text-center">Action</th>
                   </tr>
@@ -763,7 +779,9 @@ export default function Dashboard() {
                         </button>
                       </td>
                       <td className="py-2.5 px-4 text-right font-bold text-slate-900">
-                        ${Number(tx.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {currency === "INR"
+                          ? formatINR(tx.amount || 0)
+                          : formatCurrency(Number(tx.amount || 0) / 83.0, "USD")}
                       </td>
                       <td className="py-2.5 px-4 text-center text-slate-500 text-[11px]">
                         {tx.timestamp ? new Date(tx.timestamp).toLocaleTimeString() : "Just now"}

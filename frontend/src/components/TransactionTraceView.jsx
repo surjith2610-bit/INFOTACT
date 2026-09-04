@@ -8,6 +8,7 @@ import {
   searchTransactionsTrace,
   getErrorMessage,
 } from "../api/client.js";
+import { formatINR, formatCompactINR } from "../utils/currency.js";
 
 export default function TransactionTraceView({ selectedAccountId = "", onSelectAccount }) {
   const [searchTarget, setSearchTarget] = useState(selectedAccountId || "SHELL_OFFSHORE_01");
@@ -137,7 +138,12 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
       const bFrom = (tx.bankFrom || tx.from_bank || "").toLowerCase();
       const bTo = (tx.bankTo || tx.to_bank || "").toLowerCase();
       const ch = (tx.channel || tx.mode || "").toUpperCase();
-      const isSusp = tx.isSuspicious || tx.is_suspicious || amt >= 10000 || (9000 <= amt && amt < 10000);
+      const isSusp =
+        tx.isSuspicious ||
+        tx.is_suspicious ||
+        amt >= 830000 ||
+        (747000 <= amt && amt < 830000) ||
+        (9000 <= amt && amt < 10000);
 
       if (bankFilter !== "ALL") {
         const b = bankFilter.toLowerCase();
@@ -335,7 +341,7 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
             onClick={() => selectPreset("CORP_VAULT_99")}
             className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition flex items-center gap-1 font-semibold"
           >
-            <span>⚡ Vault Wire ($75k Anomaly)</span>
+            <span>⚡ Vault Wire (₹62.25L Anomaly)</span>
           </button>
           <button
             onClick={() => selectPreset("A101")}
@@ -404,7 +410,7 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
             <div className="flex justify-between pt-2 border-t border-slate-100">
               <span className="text-slate-500">Total Volume Flow:</span>
               <span className="text-slate-900 font-bold">
-                ₹{(accountData?.total_volume || totalVolume).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {formatINR(accountData?.total_volume || totalVolume)}
               </span>
             </div>
           </div>
@@ -437,7 +443,7 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
             <div className="flex flex-wrap gap-2 text-[11px] font-mono">
               <span className="text-slate-500 flex items-center gap-1 mr-1 font-semibold">Rule Checks:</span>
               {[
-                { name: "Smurfing (< ₹10k Split)", rule: "Smurfing", desc: "Small transfers & rapid splitting" },
+                { name: "Smurfing (< ₹8.3L Split)", rule: "Smurfing", desc: "Small transfers & rapid splitting" },
                 { name: "Circular Flow (A→B→C→A)", rule: "Circular Flow", desc: "Cyclic wash loop" },
                 { name: "Burst Activity (< 60s)", rule: "Burst Activity", desc: "5+ transfers in under 60 sec" },
                 { name: "Layering Pattern", rule: "Layering Pattern", desc: "Multi-hop velocity across banks" },
@@ -549,7 +555,7 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
 
         <div className="text-slate-500 text-xs">
           Showing <span className="text-blue-600 font-bold">{filteredTransactions.length}</span> transaction(s) • Total Volume:{" "}
-          <span className="text-slate-900 font-bold">₹{totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+          <span className="text-slate-900 font-bold">{formatINR(totalVolume)}</span>
         </div>
       </div>
 
@@ -636,7 +642,7 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
                     if (globalScale > 0.8) {
                       const mx = (src.x + tgt.x) / 2;
                       const my = (src.y + tgt.y) / 2;
-                      const badgeText = `₹${amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : amt}`;
+                      const badgeText = formatCompactINR(amt);
                       const fontSize = Math.max(8 / globalScale, 3.8);
                       ctx.font = `bold ${fontSize}px monospace`;
                       const bw = ctx.measureText(badgeText).width + 6;
@@ -732,7 +738,7 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Amount:</span>
-                      <span className="text-emerald-700 font-bold">₹{Number(inspectingEdge.amount || 0).toLocaleString()}</span>
+                      <span className="text-emerald-700 font-bold">{formatINR(inspectingEdge.amount || 0)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Channel Mode:</span>
@@ -820,7 +826,7 @@ export default function TransactionTraceView({ selectedAccountId = "", onSelectA
                           </td>
                           <td className="py-2.5 px-3 text-slate-700">{bankTo}</td>
                           <td className="py-2.5 px-3 text-right font-black text-slate-900">
-                            ₹{amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {formatINR(amt)}
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
