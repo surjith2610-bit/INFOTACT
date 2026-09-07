@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import NetworkGraph from "../components/NetworkGraph.jsx";
 import InvestigationPanel from "../components/InvestigationPanel.jsx";
 import TransactionTraceView from "../components/TransactionTraceView.jsx";
+import CaseManagementModal from "../components/CaseManagementModal.jsx";
+import TimelinePlayback from "../components/TimelinePlayback.jsx";
 import AuthModal from "../components/AuthModal.jsx";
 import GraphBackdrop from "../components/GraphBackdrop.jsx";
 import { useWebSocket } from "../hooks/useWebSocket.js";
@@ -19,7 +21,7 @@ import {
 import { formatCurrency, formatINR, formatCompactINR } from "../utils/currency.js";
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState("analytics"); // "analytics" | "trace" | "alerts" | "transactions"
+  const [activeTab, setActiveTab] = useState("analytics"); // "analytics" | "trace" | "alerts" | "cases" | "transactions"
   const [stats, setStats] = useState(null);
   const [graphData, setGraphData] = useState(null);
   const [alerts, setAlerts] = useState([]);
@@ -36,14 +38,21 @@ export default function Dashboard() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
-  const [themeMode, setThemeMode] = useState("light"); // "light" | "dark"
+  const [themeMode, setThemeMode] = useState("dark"); // Default luxury Black + Wine Grey palette
+
+  // Case Management Modal state
+  const [isCaseModalOpen, setIsCaseModalOpen] = useState(false);
+  const [caseSuspectNode, setCaseSuspectNode] = useState(null);
+
+  // Timeline scrubber toggle
+  const [showTimelineScrubber, setShowTimelineScrubber] = useState(false);
 
   // Filter states & Currency selection
   const [currency, setCurrency] = useState("INR"); // "INR" | "USD"
   const [alertSeverityFilter, setAlertSeverityFilter] = useState("ALL");
   const [alertSearchQuery, setAlertSearchQuery] = useState("");
   const [txSearchQuery, setTxSearchQuery] = useState("");
-  const [txLimit, setTxLimit] = useState(35);
+  const [txLimit, setTxLimit] = useState(40);
 
   // Real-time WebSocket connection
   const { connected: wsConnected, lastMessage } = useWebSocket();
@@ -176,6 +185,11 @@ export default function Dashboard() {
     setInvestigationAccountId(null);
   };
 
+  const handleCreateCaseFromNode = (node) => {
+    setCaseSuspectNode(node);
+    setIsCaseModalOpen(true);
+  };
+
   const flaggedIds = useMemo(() => {
     const ids = new Set();
     alerts.forEach((a) => {
@@ -254,14 +268,14 @@ export default function Dashboard() {
 
   return (
     <div className={`min-h-screen relative font-sans flex flex-col transition-colors duration-300 ${
-      isDark ? "bg-slate-900 text-slate-100" : "bg-slate-50 text-slate-900"
+      isDark ? "bg-[#08080A] text-slate-100" : "bg-slate-50 text-slate-900"
     }`}>
-      {/* Ambient Graph Backdrop */}
+      {/* Ambient Graph Particle Backdrop */}
       <GraphBackdrop />
 
       {/* Real-time Toast Alert Notification */}
       {toastNotification && (
-        <div className="fixed top-20 right-6 z-50 animate-bounce bg-red-600 text-white px-5 py-3 rounded-2xl shadow-xl border border-red-500/30 font-mono text-xs flex items-center gap-3">
+        <div className="fixed top-20 right-6 z-50 animate-bounce bg-[#8B1E3F] text-white px-5 py-3 rounded-2xl shadow-2xl border border-red-500/40 font-mono text-xs flex items-center gap-3 backdrop-blur-xl">
           <span className="text-lg">🚨</span>
           <div>
             <div className="font-bold">{toastNotification}</div>
@@ -273,7 +287,7 @@ export default function Dashboard() {
 
       {/* Top Header Navigation Bar */}
       <header className={`border-b sticky top-0 z-30 shadow-sm backdrop-blur-xl ${
-        isDark ? "border-slate-800 bg-slate-900/90" : "border-slate-200/90 bg-white/95"
+        isDark ? "border-[#1F1C28] bg-[#0E0C13]/90" : "border-slate-200/90 bg-white/95"
       }`}>
         <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-6">
@@ -282,21 +296,21 @@ export default function Dashboard() {
               <div className="relative">
                 <span className={`w-3.5 h-3.5 rounded-full block ${
                   wsConnected
-                    ? "bg-blue-600 shadow-sm animate-pulse"
+                    ? "bg-[#E63946] shadow-lg animate-pulse"
                     : "bg-amber-500"
                 }`} />
-                <span className="absolute -inset-1 rounded-full bg-blue-600/20 animate-ping" />
+                <span className="absolute -inset-1 rounded-full bg-[#8B1E3F]/30 animate-ping" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-extrabold tracking-tight text-xl text-slate-900 font-display">
-                    Fin<span className="text-blue-600">Graph</span>
+                  <span className={`font-extrabold tracking-tight text-xl font-display ${isDark ? "text-white" : "text-slate-900"}`}>
+                    Fin<span className="text-[#E63946]">Graph</span>
                   </span>
-                  <span className="text-blue-700 text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 bg-blue-50 border border-blue-200 rounded-full font-bold">
-                    v2.4 Pro
+                  <span className="text-red-400 text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 bg-[#8B1E3F]/20 border border-[#8B1E3F]/40 rounded-full font-bold">
+                    v3.0 Enterprise
                   </span>
                 </div>
-                <div className="text-[10px] font-mono text-slate-500">
+                <div className="text-[10px] font-mono text-slate-400">
                   Real-Time Streaming Graph Syndicate Analytics
                 </div>
               </div>
@@ -304,37 +318,37 @@ export default function Dashboard() {
 
             {/* Navigation Bar Tabs */}
             <nav className={`flex items-center border rounded-xl p-1 text-xs font-mono ${
-              isDark ? "bg-slate-800 border-slate-700" : "bg-slate-100/90 border-slate-200"
+              isDark ? "bg-[#131118] border-[#252030]" : "bg-slate-100/90 border-slate-200"
             }`}>
               <button
                 onClick={() => setActiveTab("analytics")}
-                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
                   activeTab === "analytics"
-                    ? "bg-blue-600 text-white font-bold shadow-sm"
-                    : "text-slate-600 hover:text-blue-600 hover:bg-white/60"
+                    ? "bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] text-white font-bold shadow-md"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
                 }`}
               >
-                🌐 Topology & Analytics
+                🌐 Topology
               </button>
               <button
                 onClick={() => setActiveTab("trace")}
-                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
                   activeTab === "trace"
-                    ? "bg-blue-600 text-white font-bold shadow-sm"
-                    : "text-slate-600 hover:text-blue-600 hover:bg-white/60"
+                    ? "bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] text-white font-bold shadow-md"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
                 }`}
               >
-                🔍 Forensic Trace
+                🔍 Multi-Hop Trace
               </button>
               <button
                 onClick={() => setActiveTab("alerts")}
-                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
                   activeTab === "alerts"
-                    ? "bg-blue-600 text-white font-bold shadow-sm"
-                    : "text-slate-600 hover:text-blue-600 hover:bg-white/60"
+                    ? "bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] text-white font-bold shadow-md"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
                 }`}
               >
-                🚨 Syndicate Alerts
+                🚨 Alerts
                 {alerts.length > 0 && (
                   <span className="px-1.5 py-0.2 bg-red-600 text-white font-bold text-[10px] rounded-full">
                     {alerts.length}
@@ -342,14 +356,24 @@ export default function Dashboard() {
                 )}
               </button>
               <button
-                onClick={() => setActiveTab("transactions")}
-                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all ${
-                  activeTab === "transactions"
-                    ? "bg-blue-600 text-white font-bold shadow-sm"
-                    : "text-slate-600 hover:text-blue-600 hover:bg-white/60"
+                onClick={() => setActiveTab("cases")}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                  activeTab === "cases"
+                    ? "bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] text-white font-bold shadow-md"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
                 }`}
               >
-                ⚡ Live Ledger Feed
+                📁 Cases
+              </button>
+              <button
+                onClick={() => setActiveTab("transactions")}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                  activeTab === "transactions"
+                    ? "bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] text-white font-bold shadow-md"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                ⚡ Ledger Feed
               </button>
             </nav>
           </div>
@@ -359,11 +383,11 @@ export default function Dashboard() {
             {/* Live Streaming Indicator */}
             <div className={`px-3 py-1.5 rounded-xl border text-[11px] font-mono flex items-center gap-2 ${
               wsConnected
-                ? "bg-blue-50 text-blue-700 border-blue-200"
-                : "bg-amber-50 text-amber-700 border-amber-200"
+                ? isDark ? "bg-[#1C1824] text-emerald-400 border-emerald-500/30" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-amber-500/10 text-amber-400 border-amber-500/30"
             }`}>
-              <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-blue-600 animate-ping" : "bg-amber-500"}`} />
-              <span>{wsConnected ? "⚡ WebSocket 60fps" : "Polling Mode (5s)"}</span>
+              <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-500 animate-ping" : "bg-amber-500"}`} />
+              <span>{wsConnected ? "⚡ Kafka Live 60fps" : "Polling Mode (5s)"}</span>
             </div>
 
             {/* Currency Toggle Switch (USD ⇄ INR) */}
@@ -371,24 +395,24 @@ export default function Dashboard() {
               onClick={() => setCurrency((c) => (c === "INR" ? "USD" : "INR"))}
               className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold transition-all flex items-center gap-1.5 shadow-sm ${
                 currency === "INR"
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
-                  : "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                  ? isDark ? "bg-[#181622] text-amber-300 border-amber-500/30 hover:bg-[#231F32]" : "bg-emerald-50 text-emerald-800 border-emerald-300"
+                  : isDark ? "bg-[#181622] text-blue-300 border-blue-500/30 hover:bg-[#231F32]" : "bg-blue-50 text-blue-700 border-blue-300"
               }`}
               title="Toggle Display Currency (USD ⇄ INR)"
             >
               <span>{currency === "INR" ? "🇮🇳 ₹ INR" : "🇺🇸 $ USD"}</span>
-              <span className="text-[10px] text-slate-500 font-normal underline ml-0.5">⇄</span>
+              <span className="text-[10px] text-slate-400 font-normal ml-0.5">⇄</span>
             </button>
 
             {/* Dark / Light Mode Switcher */}
             <button
               onClick={() => setThemeMode(isDark ? "light" : "dark")}
               className={`p-2 rounded-xl border text-xs font-mono transition-all ${
-                isDark ? "bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700" : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
+                isDark ? "bg-[#181622] border-[#282436] text-amber-400 hover:bg-[#231F32]" : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
               }`}
               title="Toggle Theme"
             >
-              {isDark ? "☀️ Light" : "🌙 Dark"}
+              {isDark ? "☀️ Light" : "🍷 Wine Dark"}
             </button>
 
             {/* User Profile / Auth Action */}
@@ -396,12 +420,12 @@ export default function Dashboard() {
               onClick={() => setIsAuthOpen(true)}
               className={`px-3.5 py-1.5 rounded-xl border text-xs font-mono font-semibold transition-all flex items-center gap-2 ${
                 currentUser
-                  ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-                  : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700 font-bold shadow-sm"
+                  ? isDark ? "bg-[#1C1824] border-[#8B1E3F]/40 text-rose-300" : "bg-blue-50 border-blue-200 text-blue-700"
+                  : "bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] text-white border-transparent hover:opacity-90 font-bold shadow-md"
               }`}
             >
-              <span className={`w-2 h-2 rounded-full ${currentUser ? "bg-blue-600" : "bg-white"}`} />
-              <span>{currentUser ? currentUser.name : "Sign In Portal"}</span>
+              <span className={`w-2 h-2 rounded-full ${currentUser ? "bg-emerald-400" : "bg-white"}`} />
+              <span>{currentUser ? currentUser.name : "Sign In"}</span>
             </button>
           </div>
         </div>
@@ -411,10 +435,10 @@ export default function Dashboard() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-6 space-y-6 z-10">
         {/* Status Notification Banner */}
         {statusMessage && (
-          <div className={`p-4 rounded-2xl border text-xs font-mono flex items-center justify-between shadow-sm animate-fade-in ${
+          <div className={`p-4 rounded-2xl border text-xs font-mono flex items-center justify-between shadow-lg animate-fade-in ${
             isErrorStatus
-              ? "bg-red-50 text-red-700 border-red-200 shadow-sm"
-              : "bg-blue-50 text-blue-700 border-blue-200 shadow-sm"
+              ? "bg-red-950/40 text-red-300 border-red-500/30"
+              : isDark ? "bg-[#1C1824] text-rose-300 border-[#8B1E3F]/40" : "bg-blue-50 text-blue-700 border-blue-200"
           }`}>
             <div className="flex items-center gap-2">
               <span className="text-base">{isErrorStatus ? "⚠️" : "⚡"}</span>
@@ -427,9 +451,13 @@ export default function Dashboard() {
         )}
 
         {/* Global Quick Action Bar */}
-        <div className="p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 glass-panel shadow-sm">
+        <div className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 shadow-xl backdrop-blur-xl ${
+          isDark ? "bg-[#131118]/90 border-[#221E2C]" : "bg-white/90 border-slate-200"
+        }`}>
           <div className="flex items-center gap-3">
-            <label className="px-4 py-2.5 rounded-xl font-mono text-xs font-bold cursor-pointer transition-all border bg-white hover:bg-slate-50 text-slate-700 border-slate-300 hover:border-blue-400 shadow-sm flex items-center gap-2">
+            <label className={`px-4 py-2.5 rounded-xl font-mono text-xs font-bold cursor-pointer transition-all border shadow-sm flex items-center gap-2 ${
+              isDark ? "bg-[#1C1824] hover:bg-[#282334] text-slate-200 border-[#2D283C]" : "bg-white hover:bg-slate-50 text-slate-700 border-slate-300"
+            }`}>
               <span>📁</span>
               <span>Upload CSV Dataset</span>
               <input type="file" accept=".csv" onChange={handleCsvUpload} disabled={busy} className="hidden" />
@@ -438,127 +466,181 @@ export default function Dashboard() {
             <button
               onClick={handleGenerateData}
               disabled={busy}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-mono text-xs font-bold transition shadow-sm disabled:opacity-50 flex items-center gap-2"
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-600 hover:from-blue-600 hover:to-indigo-500 text-white font-mono text-xs font-bold transition shadow-md disabled:opacity-50 flex items-center gap-2"
             >
-              <span>⚡</span> Generate Synthetic Stream
+              <span>⚡</span> Plant Smurfing Stream
+            </button>
+
+            <button
+              onClick={() => setShowTimelineScrubber((s) => !s)}
+              className={`px-3.5 py-2.5 rounded-xl font-mono text-xs font-bold transition border flex items-center gap-2 ${
+                showTimelineScrubber
+                  ? "bg-[#8B1E3F] text-white border-[#A3284E] shadow-md"
+                  : isDark ? "bg-[#1C1824] text-slate-300 border-[#282436] hover:bg-[#252032]" : "bg-slate-100 text-slate-700 border-slate-200"
+              }`}
+            >
+              <span>⏱️</span> {showTimelineScrubber ? "Hide Timeline Scrubber" : "Show Timeline Scrubber"}
             </button>
           </div>
 
           <div className="flex items-center gap-3">
             <button
+              onClick={() => {
+                setCaseSuspectNode(null);
+                setIsCaseModalOpen(true);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-[#1C1824] hover:bg-[#2A2437] text-rose-300 border border-[#8B1E3F]/40 font-mono text-xs font-bold transition flex items-center gap-2"
+            >
+              <span>📋</span> AML Cases Workbench
+            </button>
+
+            <button
               onClick={handleRunDetection}
               disabled={busy}
-              className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-mono text-xs font-bold transition-all shadow-sm disabled:opacity-50 flex items-center gap-2"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#8B1E3F] to-[#E63946] hover:opacity-95 text-white font-mono text-xs font-bold transition-all shadow-lg disabled:opacity-50 flex items-center gap-2"
             >
-              <span>🤖</span> Run AI Fraud Detection Engine
+              <span>🤖</span> Run AI Ensemble Detection
             </button>
           </div>
         </div>
 
         {/* Executive KPI Metrics Cards Row */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-sm hover:shadow-md transition">
-            <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className={`p-5 rounded-2xl border shadow-lg transition ${
+            isDark ? "bg-[#131118] border-[#221E2C] hover:border-[#8B1E3F]/40" : "bg-white border-slate-200 hover:shadow-md"
+          }`}>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
               <span>Total Graph Accounts</span>
-              <span className="text-blue-600 font-bold">● Neo4j</span>
+              <span className="text-rose-400 font-bold">● Neo4j Community</span>
             </div>
-            <div className="text-3xl font-black font-mono text-blue-600">
+            <div className="text-3xl font-black font-mono text-white">
               {stats?.total_accounts !== undefined ? stats.total_accounts.toLocaleString() : "--"}
             </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">Topology Entities Indexed</div>
+            <div className="text-[11px] font-mono text-slate-400 mt-1">Topology Entities Indexed</div>
           </div>
 
-          <div className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-sm hover:shadow-md transition">
-            <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className={`p-5 rounded-2xl border shadow-lg transition ${
+            isDark ? "bg-[#131118] border-[#221E2C] hover:border-[#8B1E3F]/40" : "bg-white border-slate-200 hover:shadow-md"
+          }`}>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
               <span>Transactions Streamed</span>
-              <span className="text-blue-700 font-bold">● Active</span>
+              <span className="text-blue-400 font-bold">● Flink Stream</span>
             </div>
-            <div className="text-3xl font-black font-mono text-slate-900">
+            <div className={`text-3xl font-black font-mono ${isDark ? "text-slate-100" : "text-slate-900"}`}>
               {stats?.total_transactions !== undefined ? stats.total_transactions.toLocaleString() : "--"}
             </div>
-            <div className="text-[11px] font-mono text-blue-700 mt-1">Real-time Stream Ingested</div>
+            <div className="text-[11px] font-mono text-blue-400 mt-1">Continuous Real-Time Ingest</div>
           </div>
 
-          <div className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-sm hover:shadow-md transition">
-            <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className={`p-5 rounded-2xl border shadow-lg transition ${
+            isDark ? "bg-[#131118] border-[#221E2C] hover:border-[#8B1E3F]/40" : "bg-white border-slate-200 hover:shadow-md"
+          }`}>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
               <span>Syndicate Alerts</span>
-              <span className="text-amber-600 font-bold">● Flagged</span>
+              <span className="text-amber-400 font-bold">● Flagged</span>
             </div>
-            <div className="text-3xl font-black font-mono text-amber-600">
+            <div className="text-3xl font-black font-mono text-amber-400">
               {stats?.fraud_alerts !== undefined ? stats.fraud_alerts : alerts.length}
             </div>
-            <div className="text-[11px] font-mono text-amber-600 mt-1">Starburst & Loop Patterns</div>
+            <div className="text-[11px] font-mono text-amber-400/80 mt-1">Starburst & Loop Patterns</div>
           </div>
 
-          <div className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-sm hover:shadow-md transition">
-            <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+          <div className={`p-5 rounded-2xl border shadow-lg transition ${
+            isDark ? "bg-[#131118] border-[#221E2C] hover:border-red-500/40" : "bg-white border-slate-200 hover:shadow-md"
+          }`}>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
               <span>Critical Severity</span>
-              <span className="text-red-600 font-bold">● Action</span>
+              <span className="text-red-500 font-bold">● Action Required</span>
             </div>
-            <div className="text-3xl font-black font-mono text-red-600">
+            <div className="text-3xl font-black font-mono text-red-500">
               {stats?.high_severity_alerts !== undefined
                 ? stats.high_severity_alerts
                 : alerts.filter((a) => a.severity === "HIGH" || a.severity === "CRITICAL").length}
             </div>
-            <div className="text-[11px] font-mono text-red-600 mt-1">Immediate KYC Review</div>
+            <div className="text-[11px] font-mono text-red-400 mt-1">Automated Case Filing SLA &lt; 4h</div>
           </div>
         </div>
 
         {/* TAB 1: Analytics & Interactive Graph Topology */}
         {activeTab === "analytics" && (
           <div className="space-y-6">
+            {/* Optional Timeline Playback Scrubber */}
+            {showTimelineScrubber && (
+              <div className="animate-fade-in">
+                <TimelinePlayback themeMode={themeMode} />
+              </div>
+            )}
+
             <div className="space-y-3">
               <div className="flex items-center justify-between font-mono text-xs">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                  <span>🌐</span> Interactive Real-Time Transaction Graph Topology
+                <h2 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 ${
+                  isDark ? "text-slate-200" : "text-slate-800"
+                }`}>
+                  <span>🌐</span> Real-Time Graph Topology & Syndicate Clustering
                 </h2>
-                <span className="text-slate-500">
-                  Drag nodes, scroll to zoom, hover for stats, click node to open workbench.
+                <span className="text-slate-400">
+                  Drag nodes, scroll to zoom, hover for stats, click node to drill down into 360° forensic profile.
                 </span>
               </div>
 
               <NetworkGraph
                 data={graphData}
                 flaggedIds={flaggedIds}
-                height={540}
+                height={560}
                 onNodeSelect={handleGraphNodeClick}
                 selectedNodeId={investigationAccountId}
+                themeMode={themeMode}
+                onCreateCase={handleCreateCaseFromNode}
               />
             </div>
 
             {/* Analytics Dashboard Grid: Top Suspicious & Fraud Type Distribution */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Top Suspicious Accounts Table */}
-              <div className="p-5 rounded-2xl border border-slate-200/90 bg-white space-y-4 shadow-sm">
-                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-800 flex items-center justify-between">
+              <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${
+                isDark ? "bg-[#131118] border-[#221E2C]" : "bg-white border-slate-200"
+              }`}>
+                <h3 className={`text-xs font-bold uppercase tracking-wider font-mono flex items-center justify-between ${
+                  isDark ? "text-slate-200" : "text-slate-800"
+                }`}>
                   <span className="flex items-center gap-2">
                     <span>🚨</span> Top Suspicious Accounts (Ranked by Risk Score)
                   </span>
-                  <span className="text-[10px] text-slate-500">Click to focus</span>
+                  <span className="text-[10px] text-slate-400">Click to focus</span>
                 </h3>
                 <div className="space-y-2">
                   {topSuspiciousAccounts.map((acc, idx) => (
                     <div
                       key={acc.id}
                       onClick={() => handleGraphNodeClick(acc.id)}
-                      className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 hover:bg-blue-50 hover:border-blue-300 transition cursor-pointer flex items-center justify-between group"
+                      className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between group ${
+                        isDark
+                          ? "bg-[#1C1824] border-[#282336] hover:bg-[#252033] hover:border-[#8B1E3F]/50"
+                          : "bg-slate-50 border-slate-200 hover:bg-rose-50/50 hover:border-rose-300"
+                      }`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-mono text-xs font-bold text-slate-600 group-hover:text-blue-600 group-hover:border-blue-300">
+                        <span className={`w-6 h-6 rounded-lg border flex items-center justify-center font-mono text-xs font-bold ${
+                          isDark
+                            ? "bg-[#131118] border-[#2E293D] text-slate-300 group-hover:text-rose-400 group-hover:border-[#8B1E3F]"
+                            : "bg-white border-slate-200 text-slate-600 group-hover:text-blue-600"
+                        }`}>
                           {idx + 1}
                         </span>
                         <div>
-                          <div className="font-mono text-xs font-bold text-slate-900 group-hover:text-blue-600 transition">
+                          <div className={`font-mono text-xs font-bold transition ${
+                            isDark ? "text-white group-hover:text-rose-400" : "text-slate-900 group-hover:text-blue-600"
+                          }`}>
                             {acc.id}
                           </div>
-                          <div className="text-[10px] text-slate-500 font-sans">
+                          <div className="text-[10px] text-slate-400 font-sans">
                             {acc.role || "High Velocity Syndicate Hub"}
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <div className="w-24 bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div className={`w-24 rounded-full h-2 overflow-hidden ${isDark ? "bg-[#282436]" : "bg-slate-200"}`}>
                           <div
                             className={`h-full rounded-full ${
                               acc.risk >= 70 ? "bg-red-500" : acc.risk >= 40 ? "bg-amber-500" : "bg-blue-600"
@@ -567,7 +649,7 @@ export default function Dashboard() {
                           />
                         </div>
                         <span className={`font-mono text-xs font-bold ${
-                          acc.risk >= 70 ? "text-red-600" : acc.risk >= 40 ? "text-amber-600" : "text-blue-600"
+                          acc.risk >= 70 ? "text-red-500" : acc.risk >= 40 ? "text-amber-400" : "text-blue-400"
                         }`}>
                           {Math.round(acc.risk)}%
                         </span>
@@ -578,12 +660,16 @@ export default function Dashboard() {
               </div>
 
               {/* Fraud Pattern Distribution Breakdown */}
-              <div className="p-5 rounded-2xl border border-slate-200/90 bg-white space-y-4 shadow-sm">
-                <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-slate-800 flex items-center justify-between">
+              <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${
+                isDark ? "bg-[#131118] border-[#221E2C]" : "bg-white border-slate-200"
+              }`}>
+                <h3 className={`text-xs font-bold uppercase tracking-wider font-mono flex items-center justify-between ${
+                  isDark ? "text-slate-200" : "text-slate-800"
+                }`}>
                   <span className="flex items-center gap-2">
                     <span>📊</span> Fraud Syndicate Pattern Distribution
                   </span>
-                  <span className="text-[10px] text-blue-600 font-mono font-bold">Live GDS Analytics</span>
+                  <span className="text-[10px] text-rose-400 font-mono font-bold">Live Graph Analytics</span>
                 </h3>
                 <div className="space-y-3">
                   {Object.entries(fraudDistribution).map(([patternName, count]) => {
@@ -591,12 +677,14 @@ export default function Dashboard() {
                     return (
                       <div key={patternName} className="space-y-1.5">
                         <div className="flex justify-between text-xs font-mono">
-                          <span className="text-slate-700 font-medium">{patternName}</span>
-                          <span className="text-blue-600 font-bold">{count} cases ({percentage}%)</span>
+                          <span className={isDark ? "text-slate-300" : "text-slate-700"}>{patternName}</span>
+                          <span className="text-rose-400 font-bold">{count} cases ({percentage}%)</span>
                         </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200">
+                        <div className={`w-full rounded-full h-2.5 overflow-hidden border ${
+                          isDark ? "bg-[#1C1824] border-[#282336]" : "bg-slate-100 border-slate-200"
+                        }`}>
                           <div
-                            className="bg-gradient-to-r from-blue-600 to-sky-500 h-full rounded-full transition-all duration-500"
+                            className="bg-gradient-to-r from-[#8B1E3F] via-[#A3284E] to-[#E63946] h-full rounded-full transition-all duration-500"
                             style={{ width: `${percentage}%` }}
                           />
                         </div>
@@ -620,13 +708,17 @@ export default function Dashboard() {
         {/* TAB 3: Syndicate Alerts Triage List */}
         {activeTab === "alerts" && (
           <div className="space-y-6">
-            <div className="p-5 rounded-2xl border border-slate-200/90 bg-white space-y-4 shadow-sm">
+            <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${
+              isDark ? "bg-[#131118] border-[#221E2C]" : "bg-white border-slate-200"
+            }`}>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-base font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                  <h2 className={`text-base font-bold tracking-tight flex items-center gap-2 ${
+                    isDark ? "text-white" : "text-slate-900"
+                  }`}>
                     <span>🚨</span> Flagged Fraud Syndicate Rings ({filteredAlerts.length})
                   </h2>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">
                     Real-time automated alerts generated by graph topology heuristics and ML anomaly detectors.
                   </p>
                 </div>
@@ -639,8 +731,8 @@ export default function Dashboard() {
                       onClick={() => setAlertSeverityFilter(sev)}
                       className={`px-3 py-1 rounded-xl text-xs font-mono font-semibold transition-all ${
                         alertSeverityFilter === sev
-                          ? "bg-blue-600 text-white shadow-sm font-bold"
-                          : "bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200"
+                          ? "bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] text-white shadow-md font-bold"
+                          : isDark ? "bg-[#1C1824] text-slate-400 hover:text-white border border-[#2D283C]" : "bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200"
                       }`}
                     >
                       {sev}
@@ -656,7 +748,9 @@ export default function Dashboard() {
                   value={alertSearchQuery}
                   onChange={(e) => setAlertSearchQuery(e.target.value)}
                   placeholder="Filter alerts by pattern type, description, or account ID…"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  className={`w-full border rounded-xl px-4 py-2.5 text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-[#8B1E3F] ${
+                    isDark ? "bg-[#1C1824] border-[#282336] text-white focus:bg-[#231F30]" : "bg-slate-50 border-slate-200 text-slate-900 focus:bg-white"
+                  }`}
                 />
               </div>
 
@@ -666,44 +760,63 @@ export default function Dashboard() {
                   filteredAlerts.map((alert) => (
                     <div
                       key={alert.id}
-                      className="glass-card p-5 rounded-2xl border border-slate-200 space-y-3 relative group hover:border-blue-300 transition"
+                      className={`p-5 rounded-2xl border space-y-3 relative group transition ${
+                        isDark ? "bg-[#1C1824] border-[#282336] hover:border-[#8B1E3F]/60" : "bg-white border-slate-200 hover:border-rose-300"
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="flex items-center gap-2">
                             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
                               alert.severity === "CRITICAL" || alert.severity === "HIGH"
-                                ? "bg-red-50 text-red-700 border border-red-200"
-                                : "bg-amber-50 text-amber-700 border border-amber-200"
+                                ? "bg-red-500/20 text-red-400 border border-red-500/40"
+                                : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
                             }`}>
                               {alert.severity || "HIGH"}
                             </span>
-                            <span className="font-mono text-xs font-bold text-slate-900">
+                            <span className={`font-mono text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
                               {alert.type || "Syndicate Smurfing Ring"}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-600 mt-2 line-clamp-2">
+                          <p className="text-xs text-slate-400 mt-2 line-clamp-2">
                             {alert.description || "Identified multi-account laundering loop."}
                           </p>
                         </div>
 
-                        <button
-                          onClick={() => handleInspectAlert(alert)}
-                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-mono text-xs font-bold shadow-sm transition whitespace-nowrap"
-                        >
-                          Investigate ➔
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const accId = alert.account_ids?.[0] || "SHELL_OFFSHORE_01";
+                              handleCreateCaseFromNode({ id: accId, name: accId, bank: "Syndicate Entity", risk: 85 });
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-[#282334] hover:bg-[#342D45] text-rose-300 border border-[#8B1E3F]/40 font-mono text-[11px] font-semibold transition whitespace-nowrap"
+                          >
+                            + Case
+                          </button>
+                          <button
+                            onClick={() => handleInspectAlert(alert)}
+                            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] hover:opacity-90 text-white font-mono text-xs font-bold shadow-md transition whitespace-nowrap"
+                          >
+                            Investigate ➔
+                          </button>
+                        </div>
                       </div>
 
                       {/* Involved Accounts Chips */}
                       {alert.account_ids && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
-                          <span className="text-[10px] font-mono text-slate-400">Nodes:</span>
+                        <div className={`flex flex-wrap items-center gap-1.5 pt-2 border-t ${
+                          isDark ? "border-[#252030]" : "border-slate-100"
+                        }`}>
+                          <span className="text-[10px] font-mono text-slate-500">Nodes:</span>
                           {alert.account_ids.map((id) => (
                             <span
                               key={id}
                               onClick={() => handleGraphNodeClick(id)}
-                              className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 font-mono text-[10px] text-slate-700 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition"
+                              className={`px-2 py-0.5 rounded-md font-mono text-[10px] cursor-pointer transition ${
+                                isDark
+                                  ? "bg-[#131118] border border-[#2D283C] text-slate-300 hover:text-rose-400 hover:border-[#8B1E3F]"
+                                  : "bg-slate-50 border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300"
+                              }`}
                             >
                               {id}
                             </span>
@@ -713,7 +826,7 @@ export default function Dashboard() {
                     </div>
                   ))
                 ) : (
-                  <div className="col-span-2 py-12 text-center text-slate-400 font-mono text-xs">
+                  <div className="col-span-2 py-12 text-center text-slate-500 font-mono text-xs">
                     No fraud alerts match the selected criteria.
                   </div>
                 )}
@@ -722,15 +835,64 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* TAB 4: Live Ledger Feed */}
+        {/* TAB 4: Case Management Full-Page Workbench */}
+        {activeTab === "cases" && (
+          <div className="space-y-4">
+            <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-xl ${
+              isDark ? "bg-[#131118] border-[#221E2C]" : "bg-white border-slate-200"
+            }`}>
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>📁</span> AML Case Management Dossier System
+                </h2>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  Track investigations, record immutable audit notes, change case dispositions, and generate printable compliance dossiers.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setCaseSuspectNode(null);
+                  setIsCaseModalOpen(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#8B1E3F] to-[#A3284E] text-white font-mono text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2"
+              >
+                <span>➕</span> Open New AML Case
+              </button>
+            </div>
+
+            {/* Embed or open the Case Management Workbench */}
+            <div className={`p-6 rounded-2xl border shadow-xl text-center space-y-4 ${
+              isDark ? "bg-[#131118] border-[#221E2C]" : "bg-white border-slate-200"
+            }`}>
+              <div className="text-4xl">🗂️</div>
+              <h3 className="text-lg font-bold text-white font-display">Active Case Registry & Export Center</h3>
+              <p className="text-xs text-slate-400 max-w-lg mx-auto font-sans">
+                Review existing AML cases filed across Smurfing rings, Circular wash trading, and High-Velocity Starburst syndicates.
+              </p>
+              <button
+                onClick={() => setIsCaseModalOpen(true)}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#8B1E3F] to-[#E63946] text-white font-mono text-sm font-bold shadow-lg hover:opacity-95 transition"
+              >
+                Launch Case Management Modal ➔
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: Live Ledger Feed */}
         {activeTab === "transactions" && (
-          <div className="p-5 rounded-2xl border border-slate-200/90 bg-white space-y-4 shadow-sm">
+          <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${
+            isDark ? "bg-[#131118] border-[#221E2C]" : "bg-white border-slate-200"
+          }`}>
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                <h2 className={`text-base font-bold tracking-tight flex items-center gap-2 ${
+                  isDark ? "text-white" : "text-slate-900"
+                }`}>
                   <span>⚡</span> Live Streaming Ledger Feed ({filteredTransactions.length})
                 </h2>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
                   High-throughput stream arriving from Kafka & processed by Flink into Neo4j.
                 </p>
               </div>
@@ -740,13 +902,19 @@ export default function Dashboard() {
                 value={txSearchQuery}
                 onChange={(e) => setTxSearchQuery(e.target.value)}
                 placeholder="Search Tx Hash, Sender, Receiver…"
-                className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white"
+                className={`border rounded-xl px-4 py-2 text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-[#8B1E3F] ${
+                  isDark ? "bg-[#1C1824] border-[#282336] text-white focus:bg-[#231F30]" : "bg-slate-50 border-slate-200 text-slate-900 focus:bg-white"
+                }`}
               />
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <div className={`overflow-x-auto rounded-xl border ${
+              isDark ? "border-[#252030] bg-[#131118]" : "border-slate-200 bg-white"
+            }`}>
               <table className="w-full text-left font-mono text-xs">
-                <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-700 text-[11px] uppercase">
+                <thead className={`border-b text-[11px] uppercase ${
+                  isDark ? "bg-[#1C1824] border-[#252030] text-slate-300" : "bg-slate-100/80 border-slate-200 text-slate-700"
+                }`}>
                   <tr>
                     <th className="py-3 px-4">Transaction ID</th>
                     <th className="py-3 px-4">Sender Account</th>
@@ -756,16 +924,18 @@ export default function Dashboard() {
                     <th className="py-3 px-4 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
+                <tbody className={`divide-y ${isDark ? "divide-[#1E1A29] text-slate-300" : "divide-slate-100 text-slate-700"}`}>
                   {filteredTransactions.map((tx, idx) => (
-                    <tr key={tx.id || idx} className="hover:bg-blue-50/50 transition">
-                      <td className="py-2.5 px-4 font-mono text-blue-600 font-semibold">
+                    <tr key={tx.id || idx} className={`transition ${
+                      isDark ? "hover:bg-[#1C1824]/60" : "hover:bg-rose-50/50"
+                    }`}>
+                      <td className="py-2.5 px-4 font-mono text-rose-400 font-semibold">
                         {(tx.id || `TX_${idx}`).slice(0, 14)}…
                       </td>
                       <td className="py-2.5 px-4">
                         <button
                           onClick={() => handleGraphNodeClick(tx.sender)}
-                          className="hover:text-blue-600 font-medium hover:underline text-slate-800"
+                          className="hover:text-rose-400 font-medium hover:underline"
                         >
                           {tx.sender || "ACC_SRC"}
                         </button>
@@ -773,12 +943,12 @@ export default function Dashboard() {
                       <td className="py-2.5 px-4">
                         <button
                           onClick={() => handleGraphNodeClick(tx.receiver)}
-                          className="hover:text-blue-600 font-medium hover:underline text-slate-800"
+                          className="hover:text-rose-400 font-medium hover:underline"
                         >
                           {tx.receiver || "ACC_DEST"}
                         </button>
                       </td>
-                      <td className="py-2.5 px-4 text-right font-bold text-slate-900">
+                      <td className={`py-2.5 px-4 text-right font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
                         {currency === "INR"
                           ? formatINR(tx.amount || 0)
                           : formatCurrency(Number(tx.amount || 0) / 83.0, "USD")}
@@ -791,7 +961,9 @@ export default function Dashboard() {
                           onClick={() => {
                             if (tx.sender) handleGraphNodeClick(tx.sender);
                           }}
-                          className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-mono border border-blue-200 transition font-semibold"
+                          className={`px-2.5 py-1 rounded text-[10px] font-mono border transition font-semibold ${
+                            isDark ? "bg-[#1C1824] hover:bg-[#262132] text-rose-300 border-[#8B1E3F]/30" : "bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                          }`}
                         >
                           Trace
                         </button>
@@ -816,6 +988,14 @@ export default function Dashboard() {
         onStatusUpdated={() => loadData()}
       />
 
+      {/* Case Management Workbench Modal */}
+      <CaseManagementModal
+        isOpen={isCaseModalOpen}
+        onClose={() => setIsCaseModalOpen(false)}
+        initialSuspectNode={caseSuspectNode}
+        themeMode={themeMode}
+      />
+
       {/* Authentication Modal */}
       <AuthModal
         isOpen={isAuthOpen}
@@ -825,4 +1005,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

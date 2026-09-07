@@ -33,10 +33,12 @@ class Settings(BaseSettings):
     # --- Fraud Detection Rule Thresholds ---
     SMURFING_TRANSACTION_LIMIT: int = 5
     SMURFING_WINDOW_MINUTES: int = 60
-    CIRCULAR_MAX_DEPTH: int = 3
+    CIRCULAR_MAX_DEPTH: int = 5
     HIGH_FREQUENCY_COUNT: int = 10
     HIGH_FREQUENCY_WINDOW_MINUTES: int = 15
     LARGE_TRANSACTION_THRESHOLD: float = 830000.0  # ₹8,30,000 (~$10k SAR threshold * 83)
+    SMURFING_TARGET_SIMILARITY_MIN: float = 800000.0  # ₹8,00,000 (~$9,600)
+    SMURFING_TARGET_SIMILARITY_MAX: float = 829500.0  # ₹8,29,500 (~$9,990)
 
     # --- Frontend origin (CORS) ---
     FRONTEND_ORIGIN: str = "http://localhost:5173"
@@ -48,9 +50,14 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = "noreply@fingraph.io"
 
+    # --- Case Management ---
+    CASE_PREFIX: str = "CASE-"
+    DEFAULT_CASE_SLA_HOURS: int = 72
+
     class Config:
         env_file = ".env"
         extra = "ignore"
 
 
 settings = Settings()
+

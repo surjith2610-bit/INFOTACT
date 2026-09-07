@@ -372,7 +372,7 @@ def detect_large_transaction(
         )
         alert_dict = create_fraud_alert(
             alert_type="LARGE_TRANSACTION_EXCEEDED",
-            severity=ai_risk["risk_level"],
+            severity="CRITICAL" if amount >= threshold * 5 else "HIGH",
             description=desc,
             account_ids=[sender, receiver],
             transaction_ids=[tx_id],
@@ -895,29 +895,38 @@ def get_graph_sample(limit: int = 300) -> dict:
     for row in rows:
         source_id = str(row["source"])
         target_id = str(row["target"])
-        source_name = str(row["sourceName"])
-        source_bank = str(row["sourceBank"])
-        target_name = str(row["targetName"])
-        target_bank = str(row["targetBank"])
         tx_id = str(row.get("txId") or "")
         timestamp = str(row.get("timestamp") or "")
         amt = float(row["amount"])
         s_risk = float(row["sourceRisk"])
         r_risk = float(row["targetRisk"])
 
+        s_meta = memory_store.derive_account_meta(source_id, row.get("sourceName"), row.get("sourceBank"))
+        r_meta = memory_store.derive_account_meta(target_id, row.get("targetName"), row.get("targetBank"))
+
         nodes[source_id] = {
             "id": source_id,
-            "name": source_name,
-            "bank": source_bank,
-            "risk": s_risk,
-            "is_fraud": s_risk >= 70
+            "name": s_meta["name"],
+            "bank": s_meta["bank"],
+            "branch": s_meta.get("branch"),
+            "ifscCode": s_meta.get("ifscCode"),
+            "location": s_meta.get("location"),
+            "entityTag": s_meta.get("entityTag"),
+            "accountType": s_meta.get("accountType"),
+            "risk": max(s_risk, memory_store.derive_risk_score(source_id)),
+            "is_fraud": s_risk >= 70 or memory_store.derive_risk_score(source_id) >= 70
         }
         nodes[target_id] = {
             "id": target_id,
-            "name": target_name,
-            "bank": target_bank,
-            "risk": r_risk,
-            "is_fraud": r_risk >= 70
+            "name": r_meta["name"],
+            "bank": r_meta["bank"],
+            "branch": r_meta.get("branch"),
+            "ifscCode": r_meta.get("ifscCode"),
+            "location": r_meta.get("location"),
+            "entityTag": r_meta.get("entityTag"),
+            "accountType": r_meta.get("accountType"),
+            "risk": max(r_risk, memory_store.derive_risk_score(target_id)),
+            "is_fraud": r_risk >= 70 or memory_store.derive_risk_score(target_id) >= 70
         }
 
         is_smurf = (9000 <= amt <= 9990) or ("SMURF" in source_id.upper())
@@ -950,3 +959,4 @@ def get_graph_sample(limit: int = 300) -> dict:
                 }
             )
     return {"nodes": list(nodes.values()), "links": links}
+

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5001";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -44,11 +44,26 @@ export const fetchStats = () => api.get("/api/stats");
 export const fetchAccounts = (limit = 100) => api.get("/api/accounts", { params: { limit } });
 export const fetchTransactions = (limit = 100) => api.get("/api/transactions", { params: { limit } });
 
-// 🎯 Master Prompt 4 Core Endpoints:
+// 360° Forensic Drill-Down & Trace
+export const fetchAccountDrilldown = (accountId) => api.get(`/api/account/${accountId}/drilldown`);
 export const fetchAccountTransactions = (accountId) => api.get(`/api/account/${accountId}/transactions`);
 export const fetchMultiHopTrace = (transactionId, depth = 5) => api.get(`/api/trace/${transactionId}`, { params: { depth } });
 export const fetchMoneyFlowGraph = (accountId, depth = 3) => api.get(`/api/flow/${accountId}`, { params: { depth } });
 export const fetchFraudAnalysis = (accountId) => api.get(`/api/fraud/analyze/${accountId}`);
+
+// Timeline & Playback APIs
+export const fetchTransactionsTimeline = (params = {}) => api.get("/api/transactions/timeline", { params });
+
+// Syndicate Pattern Subgraphs
+export const fetchSyndicatePatterns = () => api.get("/api/graph/patterns");
+
+// Case Management APIs
+export const fetchCases = (params = {}) => api.get("/api/cases", { params });
+export const fetchCaseDetail = (caseId) => api.get(`/api/cases/${caseId}`);
+export const createCase = (caseData) => api.post("/api/cases", caseData);
+export const addCaseNote = (caseId, noteData) => api.post(`/api/cases/${caseId}/notes`, noteData);
+export const updateCaseStatus = (caseId, statusData) => api.patch(`/api/cases/${caseId}/status`, statusData);
+export const exportCaseDossier = (caseId) => api.get(`/api/cases/${caseId}/export`);
 
 // Compatibility & Legacy trace functions
 export const fetchTransactionTrace = (accountId, params = {}) =>
@@ -81,3 +96,4 @@ export const registerUser = (email, password, name, role = "ANALYST") =>
 export const fetchCurrentUser = () => api.get("/api/auth/me");
 
 export default api;
+

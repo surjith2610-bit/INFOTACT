@@ -52,6 +52,30 @@ class AlertFeedbackRequest(BaseModel):
     notes: Optional[str] = ""
 
 
+class CreateCaseRequest(BaseModel):
+    suspect_account_id: str
+    title: Optional[str] = None
+    severity: Optional[str] = "HIGH"
+    status: Optional[str] = "OPEN"
+    total_amount_at_risk: Optional[float] = 0.0
+    assigned_to: Optional[str] = "Senior AML Investigator"
+    initial_note: Optional[str] = "Case initialized from detection workbench."
+    evidence_transaction_ids: Optional[List[str]] = []
+    evidence_alert_ids: Optional[List[str]] = []
+    summary: Optional[str] = ""
+
+
+class AddCaseNoteRequest(BaseModel):
+    author: Optional[str] = "AML Analyst"
+    content: str
+
+
+class UpdateCaseStatusRequest(BaseModel):
+    status: str  # "OPEN" | "UNDER_INVESTIGATION" | "ESCALATED_FIU" | "CLOSED_RESOLVED" | "FALSE_POSITIVE"
+    user: Optional[str] = "AML Investigator"
+
+
+
 from fastapi import WebSocket, WebSocketDisconnect
 
 @router.websocket("/ws")
@@ -1204,3 +1228,143 @@ async def generate_synthetic(
         "message": f"Generated {inserted} synthetic transactions with planted syndicate ring (Currency: {getattr(settings, 'CURRENCY', 'INR')}).",
         "rows": inserted,
     }
+
+
+# ==========================================
+# 360° TRANSACTION DRILL-DOWN & MULTI-HOP
+# ==========================================
+@router.get("/account/{account_id}/drilldown")
+async def get_account_drilldown_endpoint(account_id: str):
+    """
+    Returns 360° forensic investigation drilldown for an account:
+    Metadata, Counterparty transactions, Multi-hop path trace, Flow graph, and XAI risk breakdown.
+    """
+    data = memory_store.get_account_drilldown(account_id)
+    return data
+
+
+# ==========================================
+# TIMELINE PLAYBACK & FILTERING
+# ==========================================
+@router.get("/transactions/timeline")
+async def get_transactions_timeline_endpoint(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    bank: Optional[str] = None,
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
+    fraud_only: Optional[bool] = False,
+    limit: Optional[int] = 300,
+):
+    """
+    Returns filtered transactions sorted chronologically with graph nodes and links for timeline playback animation.
+    """
+    return memory_store.get_transactions_timeline(
+        start_time=start_time,
+        end_time=end_time,
+        bank=bank,
+        min_amount=min_amount,
+        max_amount=max_amount,
+        fraud_only=fraud_only,
+        limit=limit,
+    )
+
+
+# ==========================================
+# SYNDICATE PATTERN SUBGRAPHS
+# ==========================================
+@router.get("/graph/patterns")
+async def get_syndicate_patterns_endpoint():
+    """
+    Returns isolated subgraphs for detected AML syndicates (Starburst, Circular Loop, High-Value Drain).
+    """
+    return memory_store.get_syndicate_subgraphs()
+
+
+# ==========================================
+# CASE MANAGEMENT SYSTEM
+# ==========================================
+@router.post("/cases")
+async def create_case_endpoint(req: CreateCaseRequest):
+    """Creates a new AML investigation case."""
+    case_obj = memory_store.create_case(req.dict())
+    return {
+        "message": f"Case {case_obj['case_id']} created successfully.",
+        "case": case_obj,
+    }
+
+
+@router.get("/cases")
+async def list_cases_endpoint(
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: Optional[int] = 100,
+):
+    """Lists all AML investigation cases with optional filtering."""
+    cases = memory_store.get_cases(status=status, severity=severity, search=search, limit=limit)
+    return {
+        "total": len(cases),
+        "cases": cases,
+    }
+
+
+@router.get("/cases/{case_id}")
+async def get_case_detail_endpoint(case_id: str):
+    """Returns detailed dossier for an investigation case."""
+    c = memory_store.get_case(case_id)
+    if not c:
+        raise HTTPException(status_code=404, detail=f"Case {case_id} not found.")
+    return c
+
+
+@router.post("/cases/{case_id}/notes")
+async def add_case_note_endpoint(case_id: str, req: AddCaseNoteRequest):
+    """Appends an investigator note and audit record to a case."""
+    c = memory_store.add_case_note(case_id, author=req.author, content=req.content)
+    if not c:
+        raise HTTPException(status_code=404, detail=f"Case {case_id} not found.")
+    return {
+        "message": "Note added successfully.",
+        "case": c,
+    }
+
+
+@router.patch("/cases/{case_id}/status")
+async def update_case_status_endpoint(case_id: str, req: UpdateCaseStatusRequest):
+    """Updates the workflow status of an investigation case."""
+    valid_statuses = {"OPEN", "UNDER_INVESTIGATION", "ESCALATED", "ESCALATED_SAR", "ESCALATED_FIU", "CLOSED_RESOLVED", "FALSE_POSITIVE"}
+    if req.status.upper() not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status '{req.status}'. Must be one of: {', '.join(valid_statuses)}")
+    c = memory_store.update_case_status(case_id, status=req.status.upper(), user=req.user)
+    if not c:
+        raise HTTPException(status_code=404, detail=f"Case {case_id} not found.")
+    return {
+        "message": f"Case status updated to {req.status.upper()}.",
+        "case": c,
+    }
+
+
+@router.get("/cases/{case_id}/export")
+async def export_case_dossier_endpoint(case_id: str):
+    """
+    Generates a structured AML Case Dossier report payload with summary, evidence, and risk breakdown for client PDF export.
+    """
+    c = memory_store.get_case(case_id)
+    if not c:
+        raise HTTPException(status_code=404, detail=f"Case {case_id} not found.")
+    
+    suspect_acc = c.get("suspect_account_id")
+    drilldown = memory_store.get_account_drilldown(suspect_acc) if suspect_acc else {}
+
+    return {
+        "case": c,
+        "suspect_profile": drilldown.get("account", {}),
+        "metrics": drilldown.get("metrics", {}),
+        "incoming_evidence": drilldown.get("incoming_transactions", [])[:15],
+        "outgoing_evidence": drilldown.get("outgoing_transactions", [])[:15],
+        "xai_breakdown": drilldown.get("xai_breakdown", {}),
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "disclaimer": "CONFIDENTIAL FINANCIAL INTELLIGENCE DOSSIER — For authorized AML compliance officers only.",
+    }
+

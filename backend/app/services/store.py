@@ -13,6 +13,7 @@ class InMemoryStore:
     def __init__(self):
         self.transactions: list[dict] = []
         self.alerts: list[dict] = []
+        self.cases: list[dict] = []
 
     def add_transaction(self, tx: dict):
         # Store latest transactions first
@@ -38,35 +39,40 @@ class InMemoryStore:
                 "bank": "Unknown Bank",
                 "branch": "Main Branch",
                 "ifscCode": "UNKN0001001",
+                "location": "Unknown",
+                "city": "Unknown",
+                "country": "Unknown",
+                "entityTag": "RETAIL",
+                "accountType": "Savings",
                 "riskScore": 0.0,
             }
 
         known_meta = {
-            "A101": {"name": "Ravi Kumar", "bank": "SBI", "branch": "MG Road Bengaluru", "ifsc": "SBIN0000411"},
-            "A202": {"name": "Priya Sharma", "bank": "ICICI", "branch": "Bandra Kurla Mumbai", "ifsc": "ICIC0000102"},
-            "ACC0001": {"name": "Alice Smith", "bank": "HDFC Bank", "branch": "Connaught Place Delhi", "ifsc": "HDFC0000028"},
-            "ACC0002": {"name": "Bob Jones", "bank": "State Bank of India", "branch": "Koramangala Bengaluru", "ifsc": "SBIN0001234"},
-            "ACC0003": {"name": "Charlie Brown", "bank": "ICICI Bank", "branch": "Sector 18 Noida", "ifsc": "ICIC0000456"},
-            "ACC0004": {"name": "Diana Prince", "bank": "Axis Bank", "branch": "Gachibowli Hyderabad", "ifsc": "UTIB0000789"},
-            "ACC0005": {"name": "Evan Wright", "bank": "Kotak Mahindra Bank", "branch": "Indiranagar Bengaluru", "ifsc": "KKBK0000321"},
-            "SMURF001": {"name": "Smurf Mule 1", "bank": "Global Offshore Bank", "branch": "George Town Branch", "ifsc": "GLOB0009011"},
-            "SMURF002": {"name": "Smurf Mule 2", "bank": "Global Offshore Bank", "branch": "George Town Branch", "ifsc": "GLOB0009012"},
-            "SMURF003": {"name": "Smurf Mule 3", "bank": "Global Offshore Bank", "branch": "George Town Branch", "ifsc": "GLOB0009013"},
-            "SHELL01": {"name": "Offshore Holding Ltd", "bank": "Cayman Reserve Bank", "branch": "Harbour Drive Grand Cayman", "ifsc": "CAYM0008801"},
-            "CIRCULAR_HUB": {"name": "Apex Transfers Inc", "bank": "HSBC Bank", "branch": "Fort Mumbai", "ifsc": "HSBC0000010"},
-            "SHELL_OFFSHORE_01": {"name": "Apex Shell Holdings", "bank": "Cayman Reserve Bank", "branch": "Grand Cayman", "ifsc": "CAYM0009901"},
-            "CORP_VAULT_99": {"name": "Sterling Treasury Corp", "bank": "HDFC Bank", "branch": "Nariman Point Mumbai", "ifsc": "HDFC0009999"},
-            "OFFSHORE_PRIV_88": {"name": "Vanguard Private Vault", "bank": "Swiss Interbank AG", "branch": "Zurich Financial Center", "ifsc": "SWIS0008888"},
+            "A101": {"name": "Ravi Kumar", "bank": "State Bank of India", "branch": "MG Road Bengaluru", "ifsc": "SBIN0000411", "city": "Bengaluru", "country": "India", "tag": "RETAIL", "type": "Savings"},
+            "A202": {"name": "Priya Sharma", "bank": "ICICI Bank", "branch": "Bandra Kurla Mumbai", "ifsc": "ICIC0000102", "city": "Mumbai", "country": "India", "tag": "RETAIL", "type": "Savings"},
+            "ACC0001": {"name": "Alice Smith", "bank": "HDFC Bank", "branch": "Connaught Place Delhi", "ifsc": "HDFC0000028", "city": "New Delhi", "country": "India", "tag": "HIGH_NET_WORTH", "type": "Current"},
+            "ACC0002": {"name": "Bob Jones", "bank": "State Bank of India", "branch": "Koramangala Bengaluru", "ifsc": "SBIN0001234", "city": "Bengaluru", "country": "India", "tag": "RETAIL", "type": "Savings"},
+            "ACC0003": {"name": "Charlie Brown", "bank": "ICICI Bank", "branch": "Sector 18 Noida", "ifsc": "ICIC0000456", "city": "Noida", "country": "India", "tag": "RETAIL", "type": "Salary"},
+            "ACC0004": {"name": "Diana Prince", "bank": "Axis Bank", "branch": "Gachibowli Hyderabad", "ifsc": "UTIB0000789", "city": "Hyderabad", "country": "India", "tag": "CRYPTO_RELAY", "type": "Current"},
+            "ACC0005": {"name": "Evan Wright", "bank": "Kotak Mahindra Bank", "branch": "Indiranagar Bengaluru", "ifsc": "KKBK0000321", "city": "Bengaluru", "country": "India", "tag": "MULE_ACCOUNT", "type": "Savings"},
+            "SMURF001": {"name": "Smurf Mule 1", "bank": "Global Offshore Bank", "branch": "George Town Branch", "ifsc": "GLOB0009011", "city": "George Town", "country": "Cayman Islands", "tag": "MULE_ACCOUNT", "type": "Offshore"},
+            "SMURF002": {"name": "Smurf Mule 2", "bank": "Global Offshore Bank", "branch": "George Town Branch", "ifsc": "GLOB0009012", "city": "George Town", "country": "Cayman Islands", "tag": "MULE_ACCOUNT", "type": "Offshore"},
+            "SMURF003": {"name": "Smurf Mule 3", "bank": "Global Offshore Bank", "branch": "George Town Branch", "ifsc": "GLOB0009013", "city": "George Town", "country": "Cayman Islands", "tag": "MULE_ACCOUNT", "type": "Offshore"},
+            "SHELL01": {"name": "Offshore Holding Ltd", "bank": "Cayman Reserve Bank", "branch": "Harbour Drive Grand Cayman", "ifsc": "CAYM0008801", "city": "George Town", "country": "Cayman Islands", "tag": "OFFSHORE_SHELL", "type": "Corporate Holding"},
+            "CIRCULAR_HUB": {"name": "Apex Transfers Inc", "bank": "HSBC Bank", "branch": "Fort Mumbai", "ifsc": "HSBC0000010", "city": "Mumbai", "country": "India", "tag": "CORPORATE_SHELL", "type": "Trade Current"},
+            "SHELL_OFFSHORE_01": {"name": "Apex Shell Holdings", "bank": "Cayman Reserve Bank", "branch": "Grand Cayman", "ifsc": "CAYM0009901", "city": "George Town", "country": "Cayman Islands", "tag": "OFFSHORE_SHELL", "type": "Special Purpose Vehicle"},
+            "CORP_VAULT_99": {"name": "Sterling Treasury Corp", "bank": "HDFC Bank", "branch": "Nariman Point Mumbai", "ifsc": "HDFC0009999", "city": "Mumbai", "country": "India", "tag": "CORPORATE_SHELL", "type": "Treasury Escrow"},
+            "OFFSHORE_PRIV_88": {"name": "Vanguard Private Vault", "bank": "Swiss Interbank AG", "branch": "Zurich Financial Center", "ifsc": "SWIS0008888", "city": "Zurich", "country": "Switzerland", "tag": "OFFSHORE_SHELL", "type": "Private Vault"},
         }
 
         branches = [
-            ("Connaught Place", "001"),
-            ("MG Road", "002"),
-            ("Bandra West", "003"),
-            ("Koramangala", "004"),
-            ("Gachibowli", "005"),
-            ("Indiranagar", "006"),
-            ("Sector 62", "007"),
+            ("Connaught Place", "001", "New Delhi", "India"),
+            ("MG Road", "002", "Bengaluru", "India"),
+            ("Bandra West", "003", "Mumbai", "India"),
+            ("Koramangala", "004", "Bengaluru", "India"),
+            ("Gachibowli", "005", "Hyderabad", "India"),
+            ("Indiranagar", "006", "Bengaluru", "India"),
+            ("Sector 62", "007", "Noida", "India"),
         ]
         banks = [
             ("HDFC Bank", "HDFC"),
@@ -88,6 +94,11 @@ class InMemoryStore:
                 "bank": res_bank,
                 "branch": meta.get("branch", "Central Financial Branch"),
                 "ifscCode": meta.get("ifsc", "HDFC0001234"),
+                "city": meta.get("city", "Mumbai"),
+                "country": meta.get("country", "India"),
+                "location": f"{meta.get('city', 'Mumbai')}, {meta.get('country', 'India')}",
+                "entityTag": meta.get("tag", "RETAIL"),
+                "accountType": meta.get("type", "Savings"),
             }
 
         h = abs(hash(acc_id))
@@ -96,6 +107,23 @@ class InMemoryStore:
         default_name = f"Account {acc_id}" if not name else name
         default_bank = bank_tuple[0] if not bank else bank
         ifsc_code = f"{bank_tuple[1]}000{branch_tuple[1]}"
+        
+        acc_upper = acc_id.upper()
+        if "SMURF" in acc_upper:
+            tag = "MULE_ACCOUNT"
+            acc_type = "Mule Relay"
+        elif "SHELL" in acc_upper or "OFFSHORE" in acc_upper:
+            tag = "OFFSHORE_SHELL"
+            acc_type = "Offshore Entity"
+        elif "CORP" in acc_upper or "VAULT" in acc_upper or "HOLDING" in acc_upper:
+            tag = "CORPORATE_SHELL"
+            acc_type = "Corporate Current"
+        elif "RELAY" in acc_upper or "CRYPTO" in acc_upper:
+            tag = "CRYPTO_RELAY"
+            acc_type = "Exchange Liquidity"
+        else:
+            tag = "RETAIL"
+            acc_type = "Savings"
 
         return {
             "id": acc_id,
@@ -104,6 +132,11 @@ class InMemoryStore:
             "bank": default_bank,
             "branch": f"{branch_tuple[0]} Branch",
             "ifscCode": ifsc_code,
+            "city": branch_tuple[2],
+            "country": branch_tuple[3],
+            "location": f"{branch_tuple[2]}, {branch_tuple[3]}",
+            "entityTag": tag,
+            "accountType": acc_type,
         }
 
     def get_accounts(self, limit: int = 100) -> list[dict]:
@@ -822,6 +855,348 @@ class InMemoryStore:
     def get_alerts(self, limit: int = 100) -> list[dict]:
         return self.alerts[:limit]
 
+    # ==========================================
+    # CASE MANAGEMENT ENGINE
+    # ==========================================
+    def create_case(self, case_data: dict) -> dict:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        case_id = case_data.get("case_id") or f"CASE-{datetime.now().strftime('%Y')}-{str(uuid.uuid4())[:6].upper()}"
+        acc_id = case_data.get("suspect_account_id") or case_data.get("account_id") or "UNKNOWN"
+        acc_meta = self.derive_account_meta(acc_id)
+        
+        notes_init = case_data.get("notes_log") or [
+            {
+                "id": f"note-{str(uuid.uuid4())[:8]}",
+                "author": case_data.get("created_by") or "AML Lead Officer",
+                "timestamp": now_iso,
+                "content": case_data.get("initial_note") or "Case initialized from detection workbench.",
+            }
+        ]
+
+        case_obj = {
+            "case_id": case_id,
+            "id": case_id,
+            "title": case_data.get("title") or f"Investigation: {acc_meta['name']} ({acc_id})",
+            "severity": case_data.get("severity") or "HIGH",
+            "status": case_data.get("status") or "OPEN",
+            "suspect_account_id": acc_id,
+            "suspect_account_name": acc_meta["name"],
+            "suspect_bank": acc_meta["bank"],
+            "suspect_location": acc_meta.get("location", "Mumbai, India"),
+            "entity_tag": acc_meta.get("entityTag", "MULE_ACCOUNT"),
+            "risk_score": case_data.get("risk_score", self.derive_risk_score(acc_id)),
+            "fraud_probability": round(case_data.get("risk_score", self.derive_risk_score(acc_id)) / 100.0, 3),
+            "total_amount_at_risk": float(case_data.get("total_amount_at_risk") or 0.0),
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "assigned_to": case_data.get("assigned_to") or "Senior AML Investigator",
+            "created_by": case_data.get("created_by") or "Financial Crime Unit",
+            "sla_deadline": (datetime.now(timezone.utc) + timedelta(hours=72)).isoformat(),
+            "notes_log": notes_init,
+            "notes": notes_init,
+            "evidence_transaction_ids": case_data.get("evidence_transaction_ids") or [],
+            "evidence_alert_ids": case_data.get("evidence_alert_ids") or [],
+            "summary": case_data.get("summary") or f"Syndicate money-laundering investigation on {acc_id}.",
+        }
+
+        # Auto-compute total amount at risk if not supplied
+        if case_obj["total_amount_at_risk"] == 0.0:
+            drill = self.get_account_transactions(acc_id)
+            case_obj["total_amount_at_risk"] = drill.get("total_volume", 500000.0)
+
+        # Prepend to cases list
+        self.cases.insert(0, case_obj)
+        return case_obj
+
+    def get_cases(self, status: str = None, severity: str = None, search: str = None, limit: int = 100) -> list[dict]:
+        res = self.cases
+        if status and status != "ALL":
+            res = [c for c in res if c.get("status", "").upper() == status.upper()]
+        if severity and severity != "ALL":
+            res = [c for c in res if c.get("severity", "").upper() == severity.upper()]
+        if search:
+            s_low = search.lower()
+            res = [
+                c for c in res
+                if s_low in c.get("case_id", "").lower()
+                or s_low in c.get("title", "").lower()
+                or s_low in c.get("suspect_account_id", "").lower()
+                or s_low in c.get("suspect_account_name", "").lower()
+            ]
+        return res[:limit]
+
+    def get_case(self, case_id: str) -> dict:
+        for c in self.cases:
+            if c.get("case_id") == case_id or c.get("id") == case_id:
+                return c
+        return None
+
+    def add_case_note(self, case_id: str, author: str, content: str) -> dict:
+        c = self.get_case(case_id)
+        if not c:
+            return None
+        now_iso = datetime.now(timezone.utc).isoformat()
+        new_note = {
+            "id": f"note-{str(uuid.uuid4())[:8]}",
+            "author": author or "AML Analyst",
+            "timestamp": now_iso,
+            "content": content,
+        }
+        if "notes_log" not in c:
+            c["notes_log"] = []
+        if "notes" not in c:
+            c["notes"] = []
+        c["notes_log"].append(new_note)
+        c["notes"].append(new_note)
+        c["updated_at"] = now_iso
+        return c
+
+    def update_case_status(self, case_id: str, status: str, user: str = "AML Investigator") -> dict:
+        c = self.get_case(case_id)
+        if not c:
+            return None
+        old_status = c.get("status", "OPEN")
+        c["status"] = status
+        c["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self.add_case_note(
+            case_id,
+            author="System Audit",
+            content=f"Workflow status escalated/updated: {old_status} -> {status} by {user}.",
+        )
+        return c
+
+    def get_multi_hop_trace(self, account_id: str, depth: int = 5) -> dict:
+        return self.trace_transaction_chain(account_id, depth=depth)
+
+    def get_money_flow_graph(self, account_id: str, depth: int = 3) -> dict:
+        return self.get_flow_graph(account_id, depth=depth)
+
+    # ==========================================
+    # TRANSACTION DRILL-DOWN & MULTI-HOP PATHS
+    # ==========================================
+    def get_account_drilldown(self, account_id: str) -> dict:
+        """Returns deep 360-degree forensic inspection data for an account."""
+        acc_meta = self.derive_account_meta(account_id)
+        raw_txs = self.get_account_transactions(account_id)
+        risk_val = self.derive_risk_score(account_id)
+
+        # Multi-hop forward and backward trace
+        multi_trace = self.trace_transaction_chain(account_id, depth=4)
+        flow = self.get_flow_graph(account_id, depth=3)
+
+        # Compute XAI component breakdown
+        is_smurf = "SMURF" in account_id.upper() or "SHELL" in account_id.upper()
+        is_circ = "CIRCULAR" in account_id.upper() or account_id in ["ACC0001", "ACC0005"]
+        is_large = "CORP_VAULT" in account_id.upper() or "OFFSHORE_PRIV" in account_id.upper()
+
+        vel_pts = 24.0 if is_smurf else (18.0 if is_circ else min(25.0, len(raw_txs["incoming"]) + len(raw_txs["outgoing"]) * 2.0))
+        amt_pts = 25.0 if is_large else (23.0 if is_smurf else 12.0)
+        top_pts = 25.0 if is_circ else (22.0 if is_smurf else 10.0)
+        ml_pts = 23.5 if (is_smurf or is_circ or is_large) else 8.0
+
+        xai_breakdown = {
+            "velocity_score": round(vel_pts, 1),
+            "amount_anomaly_score": round(amt_pts, 1),
+            "graph_centrality_score": round(top_pts, 1),
+            "ml_anomaly_score": round(ml_pts, 1),
+            "total_risk_score": round(min(100.0, vel_pts + amt_pts + top_pts + ml_pts), 1),
+            "reasons": [
+                f"High transactional degree ({len(raw_txs['incoming'])} in, {len(raw_txs['outgoing'])} out) with rapid turnover.",
+                "Entity tagged as " + acc_meta.get("entityTag", "RETAIL").replace("_", " ") + " in compliance watchlist.",
+                "Multi-hop graph path connects to high-risk offshore escrow nodes.",
+            ]
+        }
+
+        return {
+            "account_id": account_id,
+            "account": {
+                **acc_meta,
+                "riskScore": risk_val,
+                "fraudProbability": round(risk_val / 100.0, 3),
+                "is_fraud": risk_val >= 70,
+            },
+            "risk_score": risk_val,
+            "entity_tag": acc_meta.get("entityTag", "RETAIL"),
+            "inbound_count": len(raw_txs["incoming"]),
+            "outbound_count": len(raw_txs["outgoing"]),
+            "metrics": {
+                "inbound_count": len(raw_txs["incoming"]),
+                "outbound_count": len(raw_txs["outgoing"]),
+                "total_inbound_amount": raw_txs["total_incoming"],
+                "total_outbound_amount": raw_txs["total_outgoing"],
+                "net_volume": raw_txs["total_volume"],
+            },
+            "incoming_transactions": raw_txs["incoming"],
+            "outgoing_transactions": raw_txs["outgoing"],
+            "recent_transactions": (raw_txs["incoming"] + raw_txs["outgoing"])[:20],
+            "multi_hop_path": multi_trace.get("hops", []),
+            "multi_hop_trace": multi_trace,
+            "flow_graph": flow,
+            "money_flow_graph": flow,
+            "xai_breakdown": xai_breakdown,
+        }
+
+    # ==========================================
+    # TIMELINE & PLAYBACK FILTERING
+    # ==========================================
+    def get_transactions_timeline(
+        self,
+        start_time: str = None,
+        end_time: str = None,
+        bank: str = None,
+        min_amount: float = None,
+        max_amount: float = None,
+        fraud_only: bool = False,
+        limit: int = 300,
+    ) -> dict:
+        """Returns filtered transactions sorted chronologically with time buckets for playback."""
+        filtered = []
+        for tx in self.transactions:
+            amt = float(tx.get("amount", 0.0) or 0.0)
+            ts_str = str(tx.get("timestamp", ""))
+            s_id = str(tx.get("sender") or tx.get("sender_account") or "")
+            r_id = str(tx.get("receiver") or tx.get("receiver_account") or "")
+            s_meta = self.derive_account_meta(s_id, tx.get("sender_name"), tx.get("sender_bank"))
+            r_meta = self.derive_account_meta(r_id, tx.get("receiver_name"), tx.get("receiver_bank"))
+
+            # Filter checks
+            if min_amount is not None and amt < min_amount:
+                continue
+            if max_amount is not None and amt > max_amount:
+                continue
+            if bank and bank != "ALL" and s_meta["bank"] != bank and r_meta["bank"] != bank:
+                continue
+            if fraud_only and not (tx.get("is_suspicious") or tx.get("is_fraud") or self.derive_risk_score(s_id) >= 70 or self.derive_risk_score(r_id) >= 70):
+                continue
+            if start_time and ts_str and ts_str < start_time:
+                continue
+            if end_time and ts_str and ts_str > end_time:
+                continue
+
+            channel = self.derive_channel(tx)
+            is_susp = (9000 <= amt <= 9990) or amt >= 10000 or tx.get("is_suspicious", False)
+
+            filtered.append({
+                "id": str(tx.get("id") or tx.get("txId") or ""),
+                "transaction_id": str(tx.get("id") or tx.get("txId") or ""),
+                "sender": s_id,
+                "sender_account": s_id,
+                "sender_name": s_meta["name"],
+                "sender_bank": s_meta["bank"],
+                "receiver": r_id,
+                "receiver_account": r_id,
+                "receiver_name": r_meta["name"],
+                "receiver_bank": r_meta["bank"],
+                "amount": amt,
+                "timestamp": ts_str,
+                "channel": channel,
+                "is_suspicious": is_susp,
+                "is_fraud": is_susp or self.derive_risk_score(s_id) >= 70,
+                "pattern": tx.get("pattern", "NORMAL"),
+            })
+
+        # Sort chronologically ascending for playback
+        filtered.sort(key=lambda x: x["timestamp"])
+        trimmed = filtered[:limit]
+
+        # Extract graph nodes and links for the playback view
+        nodes_map = {}
+        links = []
+        for t in trimmed:
+            s = t["sender"]
+            r = t["receiver"]
+            if s and s not in nodes_map:
+                sm = self.derive_account_meta(s, t["sender_name"], t["sender_bank"])
+                sr = self.derive_risk_score(s)
+                nodes_map[s] = {
+                    "id": s,
+                    "name": sm["name"],
+                    "bank": sm["bank"],
+                    "location": sm.get("location"),
+                    "entityTag": sm.get("entityTag"),
+                    "risk": sr,
+                    "is_fraud": sr >= 70,
+                }
+            if r and r not in nodes_map:
+                rm = self.derive_account_meta(r, t["receiver_name"], t["receiver_bank"])
+                rr = self.derive_risk_score(r)
+                nodes_map[r] = {
+                    "id": r,
+                    "name": rm["name"],
+                    "bank": rm["bank"],
+                    "location": rm.get("location"),
+                    "entityTag": rm.get("entityTag"),
+                    "risk": rr,
+                    "is_fraud": rr >= 70,
+                }
+            links.append({
+                "source": s,
+                "target": r,
+                "amount": t["amount"],
+                "timestamp": t["timestamp"],
+                "channel": t["channel"],
+                "is_fraud": t["is_fraud"],
+            })
+
+        timestamps = [t["timestamp"] for t in trimmed if t["timestamp"]]
+        min_ts = min(timestamps) if timestamps else ""
+        max_ts = max(timestamps) if timestamps else ""
+
+        return {
+            "total_count": len(trimmed),
+            "min_timestamp": min_ts,
+            "max_timestamp": max_ts,
+            "transactions": trimmed,
+            "nodes": list(nodes_map.values()),
+            "links": links,
+        }
+
+    # ==========================================
+    # SYNDICATE PATTERN SUBGRAPHS
+    # ==========================================
+    def get_syndicate_subgraphs(self) -> dict:
+        """Returns isolated subgraphs for detected syndicates (Starburst, Circular, Layering)."""
+        starburst_nodes = ["SHELL_OFFSHORE_01"] + [f"SMURF{i+1:03d}" for i in range(10)]
+        circular_nodes = ["ACC0001", "CIRCULAR_HUB", "ACC0005"]
+        layering_nodes = ["CORP_VAULT_99", "OFFSHORE_PRIV_88"]
+
+        def build_subgraph(acc_ids: list[str], pattern_name: str) -> dict:
+            n_list = []
+            l_list = []
+            acc_set = set(acc_ids)
+            for acc in acc_ids:
+                meta = self.derive_account_meta(acc)
+                risk = self.derive_risk_score(acc)
+                n_list.append({
+                    "id": acc,
+                    "name": meta["name"],
+                    "bank": meta["bank"],
+                    "entityTag": meta.get("entityTag"),
+                    "risk": risk,
+                    "is_fraud": risk >= 70,
+                })
+            for tx in self.transactions:
+                s = tx.get("sender")
+                r = tx.get("receiver")
+                if s in acc_set and r in acc_set:
+                    l_list.append({
+                        "source": s,
+                        "target": r,
+                        "amount": float(tx.get("amount", 0.0)),
+                        "timestamp": tx.get("timestamp"),
+                        "pattern": pattern_name,
+                    })
+            return {"nodes": n_list, "links": l_list, "pattern": pattern_name}
+
+        return {
+            "starburst_smurfing": build_subgraph(starburst_nodes, "STARBURST_SMURFING"),
+            "circular_loop": build_subgraph(circular_nodes, "CIRCULAR_LOOP"),
+            "circular_laundering": build_subgraph(circular_nodes, "CIRCULAR_LOOP"),
+            "layering_chains": build_subgraph(layering_nodes, "LAYERING_CHAINS"),
+            "high_value_drain": build_subgraph(layering_nodes, "HIGH_VALUE_DRAIN"),
+        }
+
+
     def seed_default_data_if_empty(self):
         if len(self.transactions) > 0:
             return
@@ -961,7 +1336,81 @@ class InMemoryStore:
             ]
         })
 
+        # Pre-seed realistic AML Investigation Cases
+        self.create_case({
+            "case_id": "CASE-2026-0091",
+            "title": "Operation Apex Smurf: Multi-Mule Funneling into Cayman Shell",
+            "severity": "CRITICAL",
+            "status": "UNDER_INVESTIGATION",
+            "suspect_account_id": "SHELL_OFFSHORE_01",
+            "total_amount_at_risk": 8175500.00,
+            "assigned_to": "Senior AML Lead (Surjith)",
+            "created_by": "Automated Kafka Anomaly Trigger",
+            "evidence_transaction_ids": [f"tx-smurf-{i+1:03d}" for i in range(10)],
+            "evidence_alert_ids": ["ALT-SMURF-STARBURST"],
+            "summary": "10 coordinated mule accounts systematically transferred ₹8.17L each to bypass SAR reporting thresholds, routing into offshore special purpose vehicle.",
+            "notes_log": [
+                {
+                    "id": "note-101",
+                    "author": "Kafka Stream Monitor",
+                    "timestamp": (now - timedelta(hours=3)).isoformat(),
+                    "content": "Case auto-generated: Inbound velocity threshold breached (10 txs in 60 mins).",
+                },
+                {
+                    "id": "note-102",
+                    "author": "Fraud Analyst",
+                    "timestamp": (now - timedelta(hours=1, minutes=20)).isoformat(),
+                    "content": "Verified all 10 sender IPs resolve to the same VPN subnet in Zurich. Placed temporary hold on outbound swift wires.",
+                }
+            ]
+        })
+
+        self.create_case({
+            "case_id": "CASE-2026-0084",
+            "title": "Corporate Treasury Breach: High-Value Wire to Unverified Swiss Vault",
+            "severity": "HIGH",
+            "status": "ESCALATED_FIU",
+            "suspect_account_id": "CORP_VAULT_99",
+            "total_amount_at_risk": 6225000.00,
+            "assigned_to": "Financial Intelligence Unit Liaison",
+            "created_by": "Regulatory Limit Sentry",
+            "evidence_transaction_ids": ["tx-large-wire-999"],
+            "evidence_alert_ids": ["ALT-LARGE-BREACH"],
+            "summary": "Unscheduled ₹62.25L wire drained from Sterling Treasury Corp directly to unverified Swiss private vault with zero prior relationship history.",
+            "notes_log": [
+                {
+                    "id": "note-201",
+                    "author": "Compliance Officer",
+                    "timestamp": (now - timedelta(hours=5)).isoformat(),
+                    "content": "STR (Suspicious Transaction Report) filed with FIU-IND. Beneficiary documentation requested.",
+                }
+            ]
+        })
+
+        self.create_case({
+            "case_id": "CASE-2026-0077",
+            "title": "Layering Investigation: Circular Fund Wash via Apex Transfers",
+            "severity": "HIGH",
+            "status": "OPEN",
+            "suspect_account_id": "CIRCULAR_HUB",
+            "total_amount_at_risk": 1095600.00,
+            "assigned_to": "AML Fraud Investigator",
+            "created_by": "Graph Topology Cycle Engine",
+            "evidence_transaction_ids": ["tx-circ-loop-1", "tx-circ-loop-2", "tx-circ-loop-3"],
+            "evidence_alert_ids": ["ALT-CIRCULAR-LOOP"],
+            "summary": "Closed loop fund circuit detected between ACC0001, CIRCULAR_HUB, and ACC0005 with 97.8% retention and zero economic justification.",
+            "notes_log": [
+                {
+                    "id": "note-301",
+                    "author": "Graph Topology Engine",
+                    "timestamp": (now - timedelta(hours=8)).isoformat(),
+                    "content": "Tarjan cycle detection confirmed 3-node cyclic flow. Suspect entities marked on compliance graph.",
+                }
+            ]
+        })
+
 
 memory_store = InMemoryStore()
 memory_store.seed_default_data_if_empty()
+
 

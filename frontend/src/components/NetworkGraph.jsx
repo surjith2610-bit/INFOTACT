@@ -8,13 +8,16 @@ export default function NetworkGraph({
   height = 580,
   onNodeSelect,
   selectedNodeId,
+  themeMode = "dark",
+  onCreateCase,
 }) {
   const fgRef = useRef();
-  const [filterMode, setFilterMode] = useState("ALL"); // "ALL" | "STARBURST" | "CIRCULAR" | "HIGH_RISK"
+  const [filterMode, setFilterMode] = useState("ALL"); // "ALL" | "STARBURST" | "CIRCULAR" | "LAYERING" | "HIGH_RISK"
   const [enableParticles, setEnableParticles] = useState(true);
   const [hoveredNode, setHoveredNode] = useState(null);
   const [hoveredLink, setHoveredLink] = useState(null);
   const [pulseTime, setPulseTime] = useState(0);
+  const [drilldownNode, setDrilldownNode] = useState(null);
 
   // Animation frame loop for radar pulsing glow on fraud nodes
   useEffect(() => {
@@ -41,6 +44,8 @@ export default function NetworkGraph({
         risk: riskVal,
         role: n.role || (riskVal >= 70 ? "Flagged Suspect" : "Clean Account"),
         isFraud: riskVal >= 70 || flaggedIds.has(n.id) || Boolean(n.is_fraud),
+        location: n.location || "Mumbai, India",
+        entityTag: n.entityTag || (n.id.includes("SHELL") ? "OFFSHORE_SHELL" : (n.id.includes("SMURF") ? "MULE_ACCOUNT" : "RETAIL")),
       };
     });
 
@@ -49,8 +54,8 @@ export default function NetworkGraph({
       const tgtId = typeof l.target === "object" ? l.target.id : l.target;
       const amt = Number(l.amount) || 0;
 
-      if (!metrics[srcId]) metrics[srcId] = { inDegree: 0, outDegree: 0, totalAmount: 0, risk: 0, role: "Clean Account", isFraud: false };
-      if (!metrics[tgtId]) metrics[tgtId] = { inDegree: 0, outDegree: 0, totalAmount: 0, risk: 0, role: "Clean Account", isFraud: false };
+      if (!metrics[srcId]) metrics[srcId] = { inDegree: 0, outDegree: 0, totalAmount: 0, risk: 0, role: "Clean Account", isFraud: false, location: "Mumbai, India", entityTag: "RETAIL" };
+      if (!metrics[tgtId]) metrics[tgtId] = { inDegree: 0, outDegree: 0, totalAmount: 0, risk: 0, role: "Clean Account", isFraud: false, location: "Mumbai, India", entityTag: "RETAIL" };
 
       metrics[srcId].outDegree += 1;
       metrics[srcId].totalAmount += amt;
@@ -60,7 +65,7 @@ export default function NetworkGraph({
 
     // Detect explicit fraud syndicate clusters for quick 1-click camera focus
     const syndicates = {
-      smurfing: { hub: "SHELL_OFFSHORE_01", nodes: [], totalAmount: 0 },
+      smurfing: { hub: "SHELL_OFFSHORE_01", nodes: [], totalAmount: 8175500 },
       largeWire: { hub: "OFFSHORE_PRIV_88", source: "CORP_VAULT_99", amount: 6225000 },
       circular: { nodes: ["ACC0001", "CIRCULAR_HUB", "ACC0005"] },
     };
@@ -85,10 +90,15 @@ export default function NetworkGraph({
         const idU = (n.id || "").toUpperCase();
         return idU.includes("CIRCULAR") || ["ACC0001", "ACC0005", "ACC0004"].includes(n.id);
       });
+    } else if (filterMode === "LAYERING") {
+      filteredNodes = data.nodes.filter((n) => {
+        const idU = (n.id || "").toUpperCase();
+        return idU.includes("VAULT") || idU.includes("OFFSHORE") || idU.includes("CORP");
+      });
     } else if (filterMode === "HIGH_RISK") {
       filteredNodes = data.nodes.filter((n) => {
         const m = metrics[n.id];
-        return (m && m.risk >= 40) || flaggedIds.has(n.id) || n.is_fraud;
+        return (m && m.risk >= 50) || flaggedIds.has(n.id) || n.is_fraud;
       });
     }
 
@@ -100,517 +110,286 @@ export default function NetworkGraph({
     });
 
     return {
-      graphData: {
-        nodes: filteredNodes.map((n) => ({ ...n })),
-        links: filteredLinks.map((l) => ({ ...l })),
-      },
+      graphData: { nodes: filteredNodes, links: filteredLinks },
       nodeMetrics: metrics,
-      fraudSyndicates: syndicates,
     };
-  }, [data, filterMode, flaggedIds]);
+  }, [data, flaggedIds, filterMode]);
 
-  // Apply D3 Force Spacing to prevent node clumping
-  useEffect(() => {
-    if (fgRef.current) {
-      // Repulsion force to fan out starburst nodes
-      fgRef.current.d3Force("charge")?.strength(-380);
-      fgRef.current.d3Force("link")?.distance(110);
-    }
-  }, [graphData]);
+  const handleNodeClick = useCallback(
+    (node) => {
+      setDrilldownNode(node);
+      if (onNodeSelect) onNodeSelect(node.id);
+      if (fgRef.current && node.x !== undefined && node.y !== undefined) {
+        fgRef.current.centerAt(node.x, node.y, 800);
+        fgRef.current.zoom(2.5, 800);
+      }
+    },
+    [onNodeSelect]
+  );
 
-  // Center & zoom on initial load
-  useEffect(() => {
-    if (fgRef.current && graphData.nodes.length > 0) {
-      setTimeout(() => {
-        fgRef.current.zoomToFit(500, 40);
-      }, 400);
-    }
-  }, [graphData.nodes.length]);
-
-  // Camera fly-to focus helper
-  const focusCluster = (nodeIds, zoomLevel = 2.4) => {
-    if (!fgRef.current || !graphData.nodes.length) return;
-    const targetNodes = graphData.nodes.filter((n) => nodeIds.includes(n.id));
-    if (targetNodes.length === 0) return;
-
-    // Calculate center coordinates
-    const avgX = targetNodes.reduce((sum, n) => sum + (n.x || 0), 0) / targetNodes.length;
-    const avgY = targetNodes.reduce((sum, n) => sum + (n.y || 0), 0) / targetNodes.length;
-
-    fgRef.current.centerAt(avgX, avgY, 700);
-    fgRef.current.zoom(zoomLevel, 700);
-
-    if (targetNodes[0] && onNodeSelect) {
-      onNodeSelect(targetNodes[0].id);
-    }
+  const focusOnSyndicate = (type) => {
+    setFilterMode(type);
+    setTimeout(() => {
+      if (fgRef.current) {
+        fgRef.current.zoomToFit(600, 50);
+      }
+    }, 150);
   };
 
-  // Node Color Logic
-  const getNodeColor = useCallback(
-    (node) => {
-      if (selectedNodeId === node.id) return "#1D4ED8"; // Deep Royal Blue Focus
-      const m = nodeMetrics[node.id];
-      const isFlagged = flaggedIds.has(node.id) || (m && m.isFraud);
-      const risk = m ? m.risk : node.risk || 0;
-
-      if (isFlagged || risk >= 70) return "#EF4444"; // High-Risk Fraud Crimson
-      if (risk >= 35) return "#F59E0B";              // Suspicious Amber
-      return "#2563EB";                              // Clean Account Royal Blue
-    },
-    [flaggedIds, selectedNodeId, nodeMetrics]
-  );
-
-  // Custom Node Canvas Renderer
-  const drawNode = useCallback(
+  const paintNode = useCallback(
     (node, ctx, globalScale) => {
-      const isSelected = selectedNodeId === node.id;
-      const isHovered = hoveredNode?.id === node.id;
-      const m = nodeMetrics[node.id];
-      const risk = m ? m.risk : node.risk || 0;
-      const isFraud = (m && m.isFraud) || flaggedIds.has(node.id) || risk >= 70;
-      const color = getNodeColor(node);
+      const m = nodeMetrics[node.id] || { risk: 0, isFraud: false };
+      const isSelected = selectedNodeId === node.id || (drilldownNode && drilldownNode.id === node.id);
+      const isHovered = hoveredNode && hoveredNode.id === node.id;
+      const isFraud = m.isFraud || m.risk >= 70;
 
-      const degree = m ? m.inDegree + m.outDegree : 0;
-      const idUpper = (node.id || "").toUpperCase();
-      const isHub = idUpper.includes("SHELL") || idUpper.includes("CORP") || degree >= 6;
-      const baseR = isHub ? 14 : Math.max(5, Math.min(12, 5 + degree * 1.2));
+      const baseRadius = Math.max(5, Math.min(16, 5 + Math.sqrt((m.inDegree + m.outDegree) * 2)));
+      const radius = isSelected || isHovered ? baseRadius * 1.3 : baseRadius;
 
-      // 1. Animated Concentric Radar Pulse Rings for Flagged / Fraud Nodes
-      if (isFraud || isSelected) {
-        ctx.save();
-        const pulseFactor = (Math.sin(pulseTime) + 1) / 2; // 0 to 1
-        const pulseR1 = baseR + 6 + pulseFactor * 8;
-        const pulseR2 = baseR + 12 + pulseFactor * 14;
-
-        // Outer wave 1
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, pulseR1, 0, 2 * Math.PI);
-        ctx.fillStyle = isSelected
-          ? `rgba(37, 99, 235, ${0.3 - pulseFactor * 0.15})`
-          : `rgba(239, 68, 68, ${0.35 - pulseFactor * 0.2})`;
-        ctx.fill();
-
-        // Outer wave 2 (wider halo)
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, pulseR2, 0, 2 * Math.PI);
-        ctx.fillStyle = isSelected
-          ? `rgba(37, 99, 235, ${0.15 - pulseFactor * 0.08})`
-          : `rgba(239, 68, 68, ${0.18 - pulseFactor * 0.1})`;
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // 2. Main Node Solid Sphere with Glowing Shadow
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, baseR, 0, 2 * Math.PI);
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = isFraud || isSelected ? 12 : 4;
-      ctx.fill();
-
-      ctx.lineWidth = isSelected ? 2.5 : isFraud ? 2 : 1.5;
-      ctx.strokeStyle = isSelected ? "#FFFFFF" : isFraud ? "#FEE2E2" : "#FFFFFF";
-      ctx.stroke();
-      ctx.restore();
-
-      // 3. Central Icon / Glyphs for Key Fraud Entities
-      if (isHub || isFraud) {
-        ctx.save();
-        const iconSize = Math.max(9 / globalScale, 6);
-        ctx.font = `bold ${iconSize}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillText(isHub ? "★" : "!", node.x, node.y);
-        ctx.restore();
-      }
-
-      // 4. Floating High-Contrast Badge Tags
-      // Always render prominent badges for Fraud Hubs or high-risk entities
-      const showAlways = isFraud || isSelected || isHovered || isHub || globalScale > 1.3;
-      if (showAlways) {
-        ctx.save();
-        const label = node.id || "Account";
-        const roleText =
-          idUpper.includes("SHELL")
-            ? "🚨 SMURFING DESTINATION HUB"
-            : idUpper.includes("CORP_VAULT")
-            ? "⚡ ANOMALOUS WIRE SENDER"
-            : idUpper.includes("OFFSHORE_PRIV")
-            ? "🚨 OFFSHORE CASHOUT TARGET"
-            : idUpper.includes("CIRCULAR")
-            ? "🔄 WASH TRADING HUB"
-            : idUpper.includes("SMURF")
-            ? "🚨 SMURF MULE"
-            : isFraud
-            ? `🚨 SUSPECT (${Math.round(risk)}%)`
-            : label;
-
-        const fontSize = Math.max(10 / globalScale, 4.5);
-        const subFontSize = Math.max(8 / globalScale, 3.5);
-
-        ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
-        const textWidth = ctx.measureText(label).width;
-        const roleWidth = isFraud ? ctx.measureText(roleText).width : 0;
-        const boxWidth = Math.max(textWidth, roleWidth) + 8;
-        const boxHeight = isFraud ? fontSize + subFontSize + 6 : fontSize + 4;
-
-        const boxY = node.y + baseR + 3;
-
-        // Background pill
-        ctx.fillStyle = isFraud ? "rgba(254, 242, 242, 0.96)" : "rgba(255, 255, 255, 0.96)";
-        ctx.strokeStyle = isSelected ? "#2563EB" : isFraud ? "#EF4444" : "rgba(148, 163, 184, 0.7)";
-        ctx.lineWidth = isFraud || isSelected ? 1.5 : 1;
-
-        // Draw rounded rectangle
-        ctx.beginPath();
-        const rBox = 3;
-        ctx.roundRect
-          ? ctx.roundRect(node.x - boxWidth / 2, boxY, boxWidth, boxHeight, rBox)
-          : ctx.rect(node.x - boxWidth / 2, boxY, boxWidth, boxHeight);
-        ctx.fill();
-        ctx.stroke();
-
-        // Node ID Text
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        ctx.fillStyle = isSelected ? "#1D4ED8" : isFraud ? "#DC2626" : "#0F172A";
-        ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
-        ctx.fillText(label, node.x, boxY + 2);
-
-        // Subtitle Role / Fraud Tag
-        if (isFraud) {
-          ctx.font = `bold ${subFontSize}px 'JetBrains Mono', monospace`;
-          ctx.fillStyle = "#D97706";
-          ctx.fillText(roleText, node.x, boxY + fontSize + 3);
-        }
-        ctx.restore();
-      }
-    },
-    [selectedNodeId, hoveredNode, flaggedIds, getNodeColor, nodeMetrics, pulseTime]
-  );
-
-  // Custom Link Canvas Renderer to make fraud flows immediately visible
-  const drawLink = useCallback(
-    (link, ctx, globalScale) => {
-      const src = typeof link.source === "object" ? link.source : { x: 0, y: 0 };
-      const tgt = typeof link.target === "object" ? link.target : { x: 0, y: 0 };
-      if (!src.x || !tgt.x) return;
-
-      const amt = Number(link.amount) || 0;
-      const isFraud = link.is_fraud || amt >= 9000 || link.is_suspicious;
-      const isSelected = selectedNodeId === src.id || selectedNodeId === tgt.id;
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(src.x, src.y);
-      ctx.lineTo(tgt.x, tgt.y);
+      let nodeColor = "#10B981";
+      let glowColor = "rgba(16, 185, 129, 0.4)";
 
       if (isFraud) {
-        // Thick bold crimson line for fraud transactions
-        ctx.strokeStyle = amt >= 50000 ? "#DC2626" : "#EF4444";
-        ctx.lineWidth = isSelected ? 4.5 : Math.max(2.5, Math.min(5, 2.5 + Math.log10(amt / 1000)));
-        ctx.shadowColor = "#EF4444";
-        ctx.shadowBlur = 8;
-      } else {
-        // Crisp subtle slate-blue line for clean transfers
-        ctx.strokeStyle = isSelected ? "rgba(37, 99, 235, 0.85)" : "rgba(148, 163, 184, 0.5)";
-        ctx.lineWidth = isSelected ? 2.5 : 1.2;
-        ctx.shadowBlur = 0;
+        nodeColor = "#E63946";
+        glowColor = "rgba(230, 57, 70, 0.7)";
+      } else if (m.risk >= 40) {
+        nodeColor = "#D4AF37";
+        glowColor = "rgba(212, 175, 55, 0.5)";
       }
-      ctx.stroke();
-      ctx.restore();
 
-      // Draw Directional Flow Arrow
-      const dx = tgt.x - src.x;
-      const dy = tgt.y - src.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len > 25) {
-        ctx.save();
-        const arrowDist = 0.55; // 55% along the edge
-        const midX = src.x + dx * arrowDist;
-        const midY = src.y + dy * arrowDist;
-        const angle = Math.atan2(dy, dx);
-        const arrowSize = isFraud ? Math.max(8 / globalScale, 4.5) : Math.max(5 / globalScale, 3);
-
-        ctx.translate(midX, midY);
-        ctx.rotate(angle);
+      if (isFraud) {
+        const pulseRadius = radius + (Math.sin(pulseTime) + 1) * 6;
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-arrowSize * 1.5, -arrowSize);
-        ctx.lineTo(-arrowSize * 1.5, arrowSize);
-        ctx.closePath();
-        ctx.fillStyle = isFraud ? "#EF4444" : "rgba(71, 85, 105, 0.85)";
-        ctx.fill();
-        ctx.restore();
+        ctx.arc(node.x, node.y, pulseRadius, 0, 2 * Math.PI, false);
+        ctx.strokeStyle = `rgba(230, 57, 70, ${0.7 - (pulseRadius - radius) / 16})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
-        // Draw Floating Amount Badge on Canvas for Fraud Transactions
-        if (isFraud || globalScale > 1.8) {
-          ctx.save();
-          const amtText = formatCompactINR(amt);
-          const badgeText = isFraud ? `🚨 ${amtText}` : `⚡ ${amtText}`;
-          const amtFontSize = Math.max(8.5 / globalScale, 3.8);
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, pulseRadius * 1.35, 0, 2 * Math.PI, false);
+        ctx.strokeStyle = `rgba(163, 40, 78, ${0.4 - (pulseRadius - radius) / 20})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
 
-          ctx.font = `bold ${amtFontSize}px 'JetBrains Mono', monospace`;
-          const badgeW = ctx.measureText(badgeText).width + 6;
-          const badgeH = amtFontSize + 4;
+      if (isSelected || isHovered) {
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius + 4, 0, 2 * Math.PI, false);
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
 
-          const labelX = src.x + dx * 0.42;
-          const labelY = src.y + dy * 0.42;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+      ctx.fillStyle = nodeColor;
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = isFraud || isSelected ? 16 : 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
 
-          ctx.fillStyle = isFraud ? "rgba(254, 242, 242, 0.95)" : "rgba(255, 255, 255, 0.95)";
-          ctx.strokeStyle = isFraud ? "#EF4444" : "rgba(148, 163, 184, 0.6)";
-          ctx.lineWidth = 1;
+      ctx.strokeStyle = isFraud ? "#8B1E3F" : (themeMode === "dark" ? "#221C2B" : "#FFFFFF");
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
 
-          ctx.beginPath();
-          ctx.rect(labelX - badgeW / 2, labelY - badgeH / 2, badgeW, badgeH);
-          ctx.fill();
-          ctx.stroke();
+      if (globalScale >= 1.2 || isSelected || isHovered || isFraud) {
+        const label = node.name || node.id;
+        const fontSize = Math.max(9, Math.min(13, 11 / globalScale));
+        ctx.font = `600 ${fontSize}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
 
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillStyle = isFraud ? "#DC2626" : "#0F172A";
-          ctx.fillText(badgeText, labelX, labelY);
-          ctx.restore();
-        }
+        const textWidth = ctx.measureText(label).width;
+        ctx.fillStyle = themeMode === "dark" ? "rgba(13, 11, 16, 0.85)" : "rgba(255, 255, 255, 0.9)";
+        ctx.fillRect(node.x - textWidth / 2 - 4, node.y + radius + 3, textWidth + 8, fontSize + 4);
+
+        ctx.fillStyle = isFraud ? "#E63946" : (themeMode === "dark" ? "#F8FAFC" : "#0F172A");
+        ctx.fillText(label, node.x, node.y + radius + 5);
       }
     },
-    [selectedNodeId]
+    [nodeMetrics, selectedNodeId, drilldownNode, hoveredNode, pulseTime, themeMode]
   );
 
   return (
-    <div className="relative rounded-2xl overflow-hidden glass-panel border border-slate-200/90 shadow-xl transition-all duration-300">
-      {/* REAL-TIME FRAUD SPOTLIGHT QUICK-FOCUS BANNER */}
-      <div className="bg-gradient-to-r from-red-50 via-white to-blue-50 border-b border-red-200/80 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-flare animate-ping" />
-          <span className="font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-            <span>🚨</span> Verified Fraud Syndicates Detected:
+    <div className="relative w-full rounded-2xl overflow-hidden glass-panel border border-rose-950/30">
+      <div className="flex flex-wrap items-center justify-between p-3.5 border-b border-white/5 bg-black/40 backdrop-blur-md gap-3 z-10 relative">
+        <div className="flex items-center space-x-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+            Graph Analytics Workbench
+          </span>
+          <span className="text-xs text-slate-400 font-mono">
+            ({graphData.nodes.length} Nodes • {graphData.links.length} Transfers)
           </span>
         </div>
 
-        {/* 1-Click Camera Fly-to Spotlight Buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => focusCluster(fraudSyndicates.smurfing.nodes, 2.3)}
-            className="px-3 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-bold transition shadow-sm flex items-center gap-1.5 group cursor-pointer"
-            title="Focus Smurfing Starburst Ring (10 Mules -> 1 Offshore Shell)"
-          >
-            <span>💥</span>
-            <span>Focus Smurfing Starburst (₹81.8L)</span>
-          </button>
-
-          <button
-            onClick={() => focusCluster(["CORP_VAULT_99", "OFFSHORE_PRIV_88"], 2.8)}
-            className="px-3 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold transition flex items-center gap-1.5 group cursor-pointer"
-            title="Focus ₹62,25,000 Offshore Vault Transfer"
-          >
-            <span>⚡</span>
-            <span>Focus ₹62.25L Offshore Wire</span>
-          </button>
-
-          <button
-            onClick={() => focusCluster(fraudSyndicates.circular.nodes, 2.5)}
-            className="px-3 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-bold transition flex items-center gap-1.5 group cursor-pointer"
-            title="Focus Circular Money Routing Loop"
-          >
-            <span>🔄</span>
-            <span>Focus Circular Loop</span>
-          </button>
-
-          <button
-            onClick={() => fgRef.current?.zoomToFit(500, 30)}
-            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-[11px] transition"
-            title="Reset to Full Graph View"
-          >
-            Reset View
-          </button>
-        </div>
-      </div>
-
-      {/* Floating HUD Header / Filter Toolbar */}
-      <div className="absolute top-14 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
-        {/* Left: Quick Pattern Filter Chips */}
-        <div className="flex items-center gap-1.5 p-1.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 pointer-events-auto shadow-md">
+        <div className="flex flex-wrap items-center gap-1.5 bg-black/50 p-1 rounded-xl border border-white/10">
           <button
             onClick={() => setFilterMode("ALL")}
-            className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
+            className={`px-2.5 py-1 text-xs font-medium rounded-lg transition ${
               filterMode === "ALL"
-                ? "bg-blue-600 text-white font-bold shadow-sm"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                ? "bg-rose-900/80 text-rose-100 border border-rose-500/40 shadow-sm"
+                : "text-slate-300 hover:bg-white/5"
             }`}
           >
-            All Nodes ({graphData.nodes.length})
+            All Nodes
           </button>
           <button
-            onClick={() => setFilterMode("STARBURST")}
-            className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all flex items-center gap-1.5 ${
+            onClick={() => focusOnSyndicate("STARBURST")}
+            className={`px-2.5 py-1 text-xs font-medium rounded-lg transition flex items-center gap-1 ${
               filterMode === "STARBURST"
-                ? "bg-blue-600 text-white font-bold shadow-sm"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                ? "bg-amber-950/80 text-amber-200 border border-amber-500/40 shadow-sm"
+                : "text-slate-300 hover:bg-white/5"
             }`}
           >
-            <span>💥</span> Starburst Hubs
+            ⭐ Starburst Smurfing
           </button>
           <button
-            onClick={() => setFilterMode("CIRCULAR")}
-            className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all flex items-center gap-1.5 ${
+            onClick={() => focusOnSyndicate("CIRCULAR")}
+            className={`px-2.5 py-1 text-xs font-medium rounded-lg transition flex items-center gap-1 ${
               filterMode === "CIRCULAR"
-                ? "bg-blue-600 text-white font-bold shadow-sm"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                ? "bg-rose-950/80 text-rose-200 border border-rose-500/40 shadow-sm"
+                : "text-slate-300 hover:bg-white/5"
             }`}
           >
-            <span>🔄</span> Circular Loops
+            🔄 Circular Loop
           </button>
           <button
-            onClick={() => setFilterMode("HIGH_RISK")}
-            className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all flex items-center gap-1.5 ${
-              filterMode === "HIGH_RISK"
-                ? "bg-red-600 text-white font-bold shadow-sm"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            onClick={() => focusOnSyndicate("LAYERING")}
+            className={`px-2.5 py-1 text-xs font-medium rounded-lg transition flex items-center gap-1 ${
+              filterMode === "LAYERING"
+                ? "bg-purple-950/80 text-purple-200 border border-purple-500/40 shadow-sm"
+                : "text-slate-300 hover:bg-white/5"
             }`}
           >
-            <span>🚨</span> High Risk
+            ⚡ Layering Drain
+          </button>
+          <button
+            onClick={() => focusOnSyndicate("HIGH_RISK")}
+            className={`px-2.5 py-1 text-xs font-medium rounded-lg transition flex items-center gap-1 ${
+              filterMode === "HIGH_RISK"
+                ? "bg-red-950/80 text-red-200 border border-red-500/40 shadow-sm"
+                : "text-slate-300 hover:bg-white/5"
+            }`}
+          >
+            🚨 High Risk Only
           </button>
         </div>
 
-        {/* Right: Interactive Camera Controls */}
-        <div className="flex items-center gap-2 p-1.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 pointer-events-auto shadow-md">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setEnableParticles((p) => !p)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5 ${
+            onClick={() => setEnableParticles(!enableParticles)}
+            className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition ${
               enableParticles
-                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                : "text-slate-500 hover:text-slate-800"
+                ? "bg-emerald-950/60 text-emerald-300 border-emerald-500/40"
+                : "bg-white/5 text-slate-400 border-white/10"
             }`}
-            title="Toggle Money Flow Particles"
+            title="Toggle animated transaction particles along links"
           >
-            <span>{enableParticles ? "⚡ Flow Stream ON" : "⚪ Flow OFF"}</span>
+            {enableParticles ? "⚡ Particles: ON" : "⚪ Particles: OFF"}
           </button>
           <button
-            onClick={() => fgRef.current?.zoom(fgRef.current.zoom() * 1.35, 300)}
-            className="p-1.5 px-2.5 rounded-lg text-slate-700 hover:text-blue-600 hover:bg-slate-100 font-mono text-sm"
-            title="Zoom In"
+            onClick={() => fgRef.current?.zoomToFit(400, 30)}
+            className="px-2.5 py-1 text-xs font-medium bg-white/5 hover:bg-white/10 text-slate-200 rounded-lg border border-white/10 transition"
           >
-            +
-          </button>
-          <button
-            onClick={() => fgRef.current?.zoom(fgRef.current.zoom() / 1.35, 300)}
-            className="p-1.5 px-2.5 rounded-lg text-slate-700 hover:text-blue-600 hover:bg-slate-100 font-mono text-sm"
-            title="Zoom Out"
-          >
-            −
+            Fit View
           </button>
         </div>
       </div>
 
-      {/* Force Graph Interactive Canvas */}
-      <div className="w-full relative bg-slate-50">
+      <div className="relative w-full" style={{ height: `${height}px`, background: themeMode === "dark" ? "#08080A" : "#F8FAFC" }}>
         <ForceGraph2D
           ref={fgRef}
-          width={window.innerWidth > 1200 ? 1200 : window.innerWidth - 48}
-          height={height}
           graphData={graphData}
-          backgroundColor="#F8FAFC"
-          nodeCanvasObject={drawNode}
+          nodeId="id"
+          nodeLabel=""
+          nodeCanvasObject={paintNode}
           nodePointerAreaPaint={(node, color, ctx) => {
-            ctx.fillStyle = color;
             ctx.beginPath();
-            ctx.arc(node.x, node.y, 16, 0, 2 * Math.PI, false);
+            ctx.arc(node.x, node.y, 18, 0, 2 * Math.PI, false);
+            ctx.fillStyle = color;
             ctx.fill();
           }}
-          linkCanvasObject={drawLink}
-          linkCanvasObjectMode={() => "after"}
-          linkDirectionalParticles={enableParticles ? 4 : 0}
-          linkDirectionalParticleWidth={(link) => (link.is_fraud || Number(link.amount) >= 9000 ? 3.5 : 2.0)}
-          linkDirectionalParticleSpeed={(d) =>
-            d.is_fraud || Number(d.amount) >= 9000
-              ? 0.015
-              : 0.005 + (Math.min(Number(d.amount) || 500, 10000) / 50000) * 0.008
-          }
-          linkDirectionalParticleColor={(link) => {
-            const isSuspicious = Number(link.amount) >= 9000 || link.is_fraud || link.is_suspicious;
-            return isSuspicious ? "#EF4444" : "#2563EB";
+          linkSource="source"
+          linkTarget="target"
+          linkColor={(link) => {
+            if (link.is_fraud || link.is_suspicious) return "#E63946";
+            return themeMode === "dark" ? "rgba(255, 255, 255, 0.15)" : "rgba(100, 116, 139, 0.25)";
           }}
+          linkWidth={(link) => (link.is_fraud ? 2.5 : 1.2)}
+          linkDirectionalParticles={enableParticles ? 4 : 0}
+          linkDirectionalParticleSpeed={0.005}
+          linkDirectionalParticleWidth={2.5}
+          linkDirectionalParticleColor={(link) => (link.is_fraud ? "#E63946" : "#60A5FA")}
+          linkCurvature={0.15}
+          onNodeClick={handleNodeClick}
           onNodeHover={(node) => setHoveredNode(node || null)}
           onLinkHover={(link) => setHoveredLink(link || null)}
-          onNodeClick={(node) => {
-            if (onNodeSelect && node) onNodeSelect(node.id);
-          }}
-          d3AlphaDecay={0.018}
-          d3VelocityDecay={0.28}
+          cooldownTicks={120}
+          d3AlphaDecay={0.02}
+          d3VelocityDecay={0.3}
         />
-      </div>
 
-      {/* Dynamic Hover Tooltip HUD card */}
-      {hoveredNode && (
-        <div className="absolute bottom-4 left-4 z-30 p-4 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl font-mono text-xs max-w-sm animate-fade-in pointer-events-none">
-          <div className="flex items-center justify-between gap-3 mb-2">
-            <span className="text-blue-600 font-extrabold tracking-wide text-sm">{hoveredNode.id}</span>
-            <span
-              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                flaggedIds.has(hoveredNode.id) || (nodeMetrics[hoveredNode.id]?.risk >= 70)
-                  ? "bg-red-50 text-red-700 border border-red-300"
-                  : nodeMetrics[hoveredNode.id]?.risk >= 35
-                  ? "bg-amber-50 text-amber-700 border border-amber-300"
-                  : "bg-blue-50 text-blue-700 border border-blue-200"
-              }`}
-            >
-              Risk: {Math.round(nodeMetrics[hoveredNode.id]?.risk || 0)}%
-            </span>
-          </div>
-
-          <div className="space-y-1.5 text-slate-700 text-[11px]">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Class Role:</span>
-              <span className="text-slate-900 font-bold">{nodeMetrics[hoveredNode.id]?.role || "Account Entity"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Inbound Transfers:</span>
-              <span className="text-emerald-700 font-semibold">{nodeMetrics[hoveredNode.id]?.inDegree || 0} incoming</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Outbound Transfers:</span>
-              <span className="text-blue-700 font-semibold">{nodeMetrics[hoveredNode.id]?.outDegree || 0} outgoing</span>
-            </div>
-            <div className="flex justify-between pt-1 border-t border-slate-200">
-              <span className="text-slate-500">Total Volume:</span>
-              <span className="text-blue-700 font-bold">
-                {formatINR(nodeMetrics[hoveredNode.id]?.totalAmount || 0)}
+        {hoveredNode && !drilldownNode && (
+          <div className="absolute top-4 left-4 p-3.5 rounded-xl glass-panel-elevated text-xs border border-rose-500/30 shadow-2xl max-w-xs pointer-events-none z-20 animate-fade-in">
+            <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1.5 mb-2">
+              <span className="font-bold text-white text-sm">{hoveredNode.name || hoveredNode.id}</span>
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${(nodeMetrics[hoveredNode.id]?.risk || 0) >= 70 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"}`}>
+                Risk: {Math.round(nodeMetrics[hoveredNode.id]?.risk || 0)}/100
               </span>
             </div>
+            <div className="space-y-1 text-slate-300">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Account ID:</span>
+                <span className="font-mono text-white">{hoveredNode.id}</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-white/5">
+                <span className="text-slate-400">Degree (In/Out):</span>
+                <span className="font-mono text-amber-300">{nodeMetrics[hoveredNode.id]?.inDegree || 0} In • {nodeMetrics[hoveredNode.id]?.outDegree || 0} Out</span>
+              </div>
+            </div>
           </div>
+        )}
 
-          <div className="mt-2.5 pt-2 border-t border-slate-200 text-[10px] text-blue-600 text-center font-sans font-semibold">
-            ⚡ Click node to open deep forensic investigation panel
+        {drilldownNode && (
+          <div className="absolute top-0 right-0 h-full w-80 sm:w-96 glass-panel-elevated border-l border-rose-500/30 p-5 overflow-y-auto z-30 shadow-2xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <div>
+                  <h4 className="text-base font-bold text-white flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                    Forensic Drill-Down
+                  </h4>
+                  <p className="text-xs text-slate-400 font-mono">{drilldownNode.id}</p>
+                </div>
+                <button onClick={() => setDrilldownNode(null)} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 text-sm font-bold">✕</button>
+              </div>
+              <div className="bg-black/40 rounded-xl p-3.5 border border-white/10 space-y-2 mb-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="text-sm font-bold text-white">{drilldownNode.name || "Account Profile"}</div>
+                    <div className="text-xs text-slate-400">{drilldownNode.bank || "Central Bank"}</div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${(nodeMetrics[drilldownNode.id]?.risk || 0) >= 70 ? "bg-red-500/20 text-red-300 border border-red-500/40" : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"}`}>
+                    Risk: {Math.round(nodeMetrics[drilldownNode.id]?.risk || 0)}/100
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="pt-3 border-t border-white/10 space-y-2">
+              <button onClick={() => { if (onCreateCase) onCreateCase(drilldownNode); }} className="w-full py-2 px-3 bg-gradient-to-r from-rose-700 to-rose-900 hover:from-rose-600 hover:to-rose-800 text-white font-semibold text-xs rounded-xl shadow-lg border border-rose-500/40 transition">📁 Open AML Case Dossier</button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Visual Graph Legend Footer */}
-      <div className="p-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 rounded-full bg-flare shadow-sm" />
-            <span className="text-slate-800 font-bold">🚨 Flagged Fraud Syndicate (&gt;70%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-gold shadow-sm" />
-            <span className="text-slate-700">⚠️ Suspicious Velocity (35-70%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-blue-600 shadow-sm" />
-            <span className="text-slate-700">🔵 Clean Account (&lt;30%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-3.5 h-1.5 bg-flare rounded" />
-            <span className="text-slate-700">🔴 High-Risk Laundering Flow</span>
-          </div>
+      <div className="flex flex-wrap items-center justify-between px-4 py-2 bg-black/40 border-t border-white/5 text-[11px] text-slate-400">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm" /><span>Clean Account</span></div>
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm" /><span>Moderate</span></div>
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm" /><span>Syndicate / Fraud</span></div>
         </div>
-        <div className="text-slate-500 text-[11px] font-sans">
-          ⚡ GPU Particle Acceleration Enabled • Live Cypher Graph
-        </div>
+        <div><span>Drag nodes to pin • Click node for 360° breakdown</span></div>
       </div>
     </div>
   );
